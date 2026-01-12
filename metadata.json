@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Copy1 elemede terminado 3.0",
+  "description": "Una plataforma interactiva para explorar los sectores más dulces: desde repostería creativa hasta churrerías tradicionales.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
