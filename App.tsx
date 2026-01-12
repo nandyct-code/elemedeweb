@@ -13,6 +13,7 @@ import {
   LEGAL_TEXTS, ALL_LEGAL_DOCS, SUBSCRIPTION_PACKS, MAX_SYSTEM_RADIUS, MOCK_LEADS
 } from './constants';
 import { getUserProvince, getSectorDetails, getSectorImage } from './services/geminiService';
+import { fetchInitialData } from './services/supabase';
 
 // Components
 import { SectorCard } from './components/SectorCard';
@@ -34,7 +35,7 @@ import { BannerManager } from './components/BannerManager';
 import { StoryRail } from './components/StoryRail'; 
 import { EventRequestModal } from './components/EventRequestModal';
 import { NotificationCenter } from './components/NotificationCenter'; 
-import { CookieConsentBanner } from './components/CookieConsentBanner'; // IMPORTED
+import { CookieConsentBanner } from './components/CookieConsentBanner';
 
 // Modals
 import { AuthModal } from './components/AuthModal';
@@ -94,6 +95,22 @@ export const App = () => {
   // Footer/Info Modals State
   const [infoModalState, setInfoModalState] = useState<{ open: boolean; title: string; content: string }>({ open: false, title: '', content: '' });
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+
+  // --- SUPABASE INIT ---
+  useEffect(() => {
+    const loadData = async () => {
+      const data = await fetchInitialData();
+      if (data) {
+        if (data.businesses.length > 0) setBusinesses(data.businesses);
+        if (data.users.length > 0) {
+            // Merge existing mock users (like admins) with real users
+            const combinedUsers = [...MOCK_USERS.filter(u => u.role.startsWith('admin')), ...data.users];
+            setUsers(combinedUsers);
+        }
+      }
+    };
+    loadData();
+  }, []);
 
   // --- HELPERS ---
   const detectLocation = async (lat: number, lng: number) => {
