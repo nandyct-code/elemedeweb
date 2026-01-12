@@ -76,6 +76,9 @@ export const App = () => {
   const [sectorImageUrl, setSectorImageUrl] = useState<string | null>(null);
   const [isNotifCenterOpen, setIsNotifCenterOpen] = useState(false); 
   
+  // PWA Install State
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  
   // Tag Filtering State
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   
@@ -111,6 +114,36 @@ export const App = () => {
     };
     loadData();
   }, []);
+
+  // --- PWA INSTALLATION EVENT ---
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    
+    // Show the install prompt
+    installPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    const { outcome } = await installPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    
+    // We've used the prompt, and can't use it again, throw it away
+    setInstallPrompt(null);
+  };
 
   // --- HELPERS ---
   const detectLocation = async (lat: number, lng: number) => {
@@ -408,7 +441,14 @@ export const App = () => {
       <ContactModal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} />
       <EventRequestModal isOpen={isEventModalOpen} onClose={() => setIsEventModalOpen(false)} currentUser={currentUser} onSubmit={handleNewLead} onRequestLogin={() => { setIsEventModalOpen(false); setIsAuthModalOpen(true); }} />
       {maintenanceMode && !currentUser?.role.includes('admin') && !currentUser?.role.includes('master') && <MaintenanceScreen onUnlockAttempt={handleMaintenanceUnlock} />}
-      <SocialSidebar showInstall={true} socialLinks={socialLinks} />
+      
+      {/* Social Sidebar with PWA Install Logic */}
+      <SocialSidebar 
+        showInstall={!!installPrompt} 
+        onInstall={handleInstallApp} 
+        socialLinks={socialLinks} 
+      />
+      
       <BannerManager banners={banners} businesses={businesses} context="footer_sticky" userLocation={userLocation} />
       
       {/* UPDATED: Pass location and business data to NotificationCenter for geofencing */}
