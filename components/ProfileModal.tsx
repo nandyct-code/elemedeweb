@@ -4,7 +4,8 @@ import { UserAccount, Business, AddressDetails, SupportTicket, Invoice, AdReques
 import { getSectorImage, auditImageQuality, generateMarketingKit } from '../services/geminiService';
 import { SECTORS, SUBSCRIPTION_PACKS, BANNER_1_DAY_PRICE, BANNER_7_DAYS_PRICE, BANNER_14_DAYS_PRICE, MICRO_PAYMENT_AMOUNT, MOCK_DISCOUNT_CODES, MOCK_LEADS, LEAD_UNLOCK_PRICE, PUSH_NOTIFICATION_PRICE, CREDIT_PACKS, ACTION_COSTS } from '../constants';
 import { sendNotification } from '../services/notificationService';
-import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video } from 'lucide-react';
+import { stripeService } from '../services/stripeService';
+import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X } from 'lucide-react';
 
 const adPrices: Record<AdRequestType, { base: number, final: number }> = {
   '1_day': { base: 14.90, final: BANNER_1_DAY_PRICE },
@@ -70,7 +71,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   // Cancellation State
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [timeLeft, setTimeLeft] = useState('');
+  const [cancellationDate, setCancellationDate] = useState<string | null>(null);
+
+  // Card Edit State
+  const [isEditingCard, setIsEditingCard] = useState(false);
+  const [newCardData, setNewCardData] = useState({ number: '', expiry: '', cvc: '', name: '' });
+  const [isSavingCard, setIsSavingCard] = useState(false);
 
   // Info Editing State
   const [editFormData, setEditFormData] = useState<Partial<Business>>({});
@@ -167,6 +173,53 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           });
           alert(`✅ ¡Recarga exitosa! Se han añadido ${totalCredits} Sweet Credits a tu monedero.`);
       }
+  };
+
+  // --- CARD UPDATE LOGIC ---
+  const handleUpdateCard = () => {
+      if (!business) return;
+      if (newCardData.number.length < 15 || !newCardData.expiry || !newCardData.cvc) {
+          return alert("Por favor revisa los datos de la tarjeta.");
+      }
+
+      setIsSavingCard(true);
+      setTimeout(() => {
+          onUpdateBusiness(business.id, {
+              stripeConnection: {
+                  ...business.stripeConnection,
+                  status: 'connected',
+                  last4: newCardData.number.slice(-4),
+                  cardBrand: newCardData.number.startsWith('4') ? 'Visa' : 'MasterCard',
+              }
+          });
+          setIsSavingCard(false);
+          setIsEditingCard(false);
+          setNewCardData({ number: '', expiry: '', cvc: '', name: '' });
+          alert("✅ Método de pago actualizado correctamente.");
+      }, 1500);
+  };
+
+  // --- CANCELLATION LOGIC ---
+  const handleConfirmCancellation = () => {
+      if (!business) return;
+      
+      // Calculate end date (simulated 30 days from now)
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 30);
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      // Update Business: Set cancellation date AND clear ads
+      onUpdateBusiness(business.id, {
+          scheduledCancellationDate: endDate.toISOString(),
+          adRequests: [], // Cancel all ads
+          totalAdSpend: 0, // Reset ad rank power
+          // We DO NOT set status to 'suspended' yet, user retains access until date
+      });
+
+      setCancellationDate(endDateStr);
+      setShowCancelConfirm(false);
+      
+      sendNotification('exit', user.email, { name: user.name, endDate: endDateStr });
   };
 
   // --- STORY LOGIC (ESCAPARATE EFÍMERO + SWEET REELS) ---
@@ -390,24 +443,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const handleCancelSubscription = () => {
-      if (!business) return;
-      if (confirm("ATENCIÓN: ¿Estás seguro de que deseas cancelar la renovación automática? Perderás tu posicionamiento y ventajas al finalizar el periodo actual.")) {
-          const endDate = new Date();
-          endDate.setDate(endDate.getDate() + 30);
-          const endDateStr = endDate.toISOString().split('T')[0];
-          
-          onUpdateBusiness(business.id, { 
-              scheduledCancellationDate: endDate.toISOString() 
-          });
-          
-          sendNotification('exit', user.email, { name: user.name, endDate: endDateStr });
-          
-          setShowCancelConfirm(false);
-          alert(`Cancelación programada para el ${endDateStr}. Tu negocio seguirá visible hasta esa fecha.`);
-      }
   };
 
   const handleUnlockLead = (lead: Lead) => {
@@ -646,7 +681,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* ... (Business Management preserved) ... */}
           {activeTab === 'negocio' && business && currentPack && (
             <div className="space-y-12 animate-fade-in pb-20">
-                {/* ... (Plan Dashboard, Sweet Wallet, Payment Method, Info Form, Tags, Locations, Cancellation - all same as before) ... */}
                 {/* 1. PLAN DASHBOARD & ACTIONS */}
                 <div className={`rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl ${currentPack.colorClass.replace('bg-', 'bg-gradient-to-br from-').replace('50', '600 to-gray-900')}`}>
                     <div className="absolute top-0 right-0 p-8 opacity-20 transform rotate-12"><Crown size={120} /></div>
@@ -662,7 +696,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             </div>
                             <h2 className="text-4xl font-brand font-black uppercase italic tracking-tighter mb-2">{currentPack.label}</h2>
                             <p className="text-white/80 text-sm font-medium max-w-md">
-                                Próxima renovación: <span className="font-bold text-white">{timeLeft}</span> ({business.billingCycle === 'annual' ? 'Ciclo Anual' : 'Ciclo Mensual'})
+                                Próxima renovación: <span className="font-bold text-white">{(business.stripeConnection?.nextBillingDate || 'Calculando...')}</span> ({business.billingCycle === 'annual' ? 'Ciclo Anual' : 'Ciclo Mensual'})
                             </p>
                         </div>
                         
@@ -705,37 +739,88 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     </div>
                 </div>
                 
-                {/* ... (Other existing sections: Payment, Info, Tags, Locations, Cancellation) ... */}
-                {/* 3. PAYMENT METHOD (CUSTOMER VIEW) */}
+                {/* 3. PAYMENT METHOD (CUSTOMER VIEW) - EDICIÓN HABILITADA */}
                 <div className="bg-white p-8 rounded-[2.5rem] border-2 border-indigo-50 shadow-sm relative overflow-hidden">
                     <div className="flex justify-between items-center mb-6">
                         <h4 className="font-black text-gray-900 uppercase italic text-lg flex items-center gap-2"><CreditCard size={20} className="text-indigo-600"/> Tu Método de Pago</h4>
+                        {!isEditingCard && (
+                            <button onClick={() => setIsEditingCard(true)} className="text-indigo-600 text-[10px] font-black uppercase hover:underline flex items-center gap-1">
+                                <CreditCard size={14}/> Editar Tarjeta
+                            </button>
+                        )}
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Tarjeta Vinculada</label>
-                                <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
-                                    <div className="w-8 h-5 bg-gray-200 rounded flex items-center justify-center text-[8px] font-bold">CARD</div>
-                                    <span className="text-xs font-bold text-gray-700">•••• •••• •••• {business.stripeConnection?.last4 || '0000'}</span>
-                                    <span className="text-[9px] text-gray-400 uppercase ml-auto">{business.stripeConnection?.cardBrand || 'VISA'}</span>
+                    {isEditingCard ? (
+                        <div className="bg-gray-50 p-6 rounded-2xl border border-indigo-100 animate-fade-in">
+                            <h5 className="text-xs font-black uppercase mb-4 text-indigo-900">Actualizar Datos de Facturación</h5>
+                            <div className="space-y-4">
+                                <input 
+                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 font-bold text-sm outline-none" 
+                                    placeholder="Nombre del Titular" 
+                                    value={newCardData.name} 
+                                    onChange={e => setNewCardData({...newCardData, name: e.target.value})} 
+                                />
+                                <div className="relative">
+                                    <input 
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 font-mono text-sm outline-none pl-10" 
+                                        placeholder="0000 0000 0000 0000" 
+                                        maxLength={19} 
+                                        value={newCardData.number} 
+                                        onChange={e => setNewCardData({...newCardData, number: e.target.value})} 
+                                    />
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><CreditCard size={16} /></span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input 
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 font-mono text-sm outline-none text-center" 
+                                        placeholder="MM/YY" 
+                                        maxLength={5} 
+                                        value={newCardData.expiry} 
+                                        onChange={e => setNewCardData({...newCardData, expiry: e.target.value})} 
+                                    />
+                                    <input 
+                                        type="password"
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 font-mono text-sm outline-none text-center" 
+                                        placeholder="CVC" 
+                                        maxLength={3} 
+                                        value={newCardData.cvc} 
+                                        onChange={e => setNewCardData({...newCardData, cvc: e.target.value})} 
+                                    />
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <button 
+                                        onClick={handleUpdateCard} 
+                                        disabled={isSavingCard}
+                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-indigo-700 transition-colors shadow-md disabled:opacity-70 flex justify-center gap-2"
+                                    >
+                                        {isSavingCard ? <Loader2 className="animate-spin" /> : <Save size={14} />} Guardar
+                                    </button>
+                                    <button onClick={() => setIsEditingCard(false)} className="px-6 bg-gray-200 text-gray-600 rounded-xl font-bold text-xs hover:bg-gray-300">Cancelar</button>
                                 </div>
                             </div>
                         </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Próximo Cobro</label>
-                                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold">
-                                    {business.stripeConnection?.nextBillingDate || 'Calculando...'}
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Tarjeta Vinculada</label>
+                                    <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                                        <div className="w-8 h-5 bg-gray-200 rounded flex items-center justify-center text-[8px] font-bold">CARD</div>
+                                        <span className="text-xs font-bold text-gray-700">•••• •••• •••• {business.stripeConnection?.last4 || '0000'}</span>
+                                        <span className="text-[9px] text-gray-400 uppercase ml-auto">{business.stripeConnection?.cardBrand || 'VISA'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Próximo Cobro</label>
+                                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold">
+                                        {(business.stripeConnection?.nextBillingDate || 'Calculando...')}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div className="mt-6 pt-6 border-t border-gray-100 flex justify-end">
-                        <button className="text-indigo-600 text-[10px] font-black uppercase hover:underline">Actualizar Tarjeta (Se abrirá Stripe) →</button>
-                    </div>
+                    )}
                 </div>
 
                 {/* 4. BUSINESS INFO FORM (WITH DESCRIPTION) */}
@@ -839,18 +924,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     ) : (
                         <div className="grid gap-4">
                             {editFormData.direccionesAdicionales.map((sede, idx) => (
-                                <div key={idx} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative group">
-                                    <button onClick={() => handleDeleteSede(idx)} className="absolute top-4 right-4 text-red-300 hover:text-red-500 p-2">
+                                <div key={idx} className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 relative group animate-fade-in">
+                                    <button onClick={() => handleDeleteSede(idx)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 p-2">
                                         <Trash2 size={16} />
                                     </button>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dirección Sede #{idx+1}</label>
-                                            <input className="w-full bg-gray-50 border border-gray-200 p-2 rounded-lg text-xs font-bold mt-1" value={sede.calle} onChange={e => handleUpdateSede(idx, 'calle', e.target.value)} />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="md:col-span-2">
+                                            <label className="text-[9px] font-black text-blue-800 uppercase tracking-widest">Dirección Sede #{idx+1}</label>
+                                            <input className="w-full bg-white border border-blue-100 p-2.5 rounded-lg text-xs font-bold mt-1" placeholder="Calle, Número..." value={sede.calle} onChange={e => handleUpdateSede(idx, 'calle', e.target.value)} />
                                         </div>
                                         <div>
-                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Ciudad</label>
-                                            <input className="w-full bg-gray-50 border border-gray-200 p-2 rounded-lg text-xs font-bold mt-1" value={sede.ciudad} onChange={e => handleUpdateSede(idx, 'ciudad', e.target.value)} />
+                                            <label className="text-[9px] font-black text-blue-800 uppercase tracking-widest">CP</label>
+                                            <input className="w-full bg-white border border-blue-100 p-2.5 rounded-lg text-xs font-bold mt-1" value={sede.cp} onChange={e => handleUpdateSede(idx, 'cp', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-black text-blue-800 uppercase tracking-widest">Ciudad</label>
+                                            <input className="w-full bg-white border border-blue-100 p-2.5 rounded-lg text-xs font-bold mt-1" value={sede.ciudad} onChange={e => handleUpdateSede(idx, 'ciudad', e.target.value)} />
                                         </div>
                                     </div>
                                 </div>
@@ -859,29 +948,66 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     )}
                 </div>
 
-                {/* 7. SUBSCRIPTION CANCELLATION (DANGER ZONE) */}
+                {/* 7. SUBSCRIPTION CANCELLATION (DANGER ZONE) - ENHANCED */}
                 <div className="bg-red-50 p-8 rounded-[2.5rem] border border-red-100">
                     <h4 className="font-black text-red-900 uppercase italic text-lg mb-4 flex items-center gap-2"><XCircle size={20}/> Zona de Peligro</h4>
-                    <p className="text-xs text-red-700 font-medium mb-6 max-w-2xl">
-                        Si cancelas tu suscripción, tu perfil dejará de ser visible y perderás tu posicionamiento en el ranking al finalizar el periodo actual. No se realizarán más cobros.
-                    </p>
+                    
                     {business.scheduledCancellationDate ? (
-                        <div className="bg-white p-4 rounded-xl border border-red-200 text-center">
-                            <p className="text-xs font-bold text-red-600 uppercase">Cancelación Programada</p>
-                            <p className="text-[10px] text-gray-500">Tu acceso finalizará el: {business.scheduledCancellationDate.split('T')[0]}</p>
+                        <div className="bg-white p-6 rounded-2xl border-2 border-red-200 text-center animate-fade-in">
+                            <p className="text-sm font-black text-red-600 uppercase tracking-widest mb-2">⚠ Cancelación Programada</p>
+                            <p className="text-xs text-gray-600 font-medium mb-1">
+                                Tu acceso y visibilidad se perderán el día:
+                            </p>
+                            <p className="text-xl font-black text-gray-900 mb-4">{business.scheduledCancellationDate.split('T')[0]}</p>
+                            <div className="bg-red-50 p-3 rounded-xl inline-block text-[10px] text-red-800 font-bold border border-red-100">
+                                Estado: Solo Mapa (Al finalizar periodo)
+                            </div>
+                        </div>
+                    ) : showCancelConfirm ? (
+                        <div className="bg-white p-6 rounded-2xl border-2 border-red-500 shadow-xl animate-shake">
+                            <h5 className="font-black text-red-600 uppercase text-sm mb-3">¿Confirmar Cancelación?</h5>
+                            <p className="text-xs text-gray-600 font-medium mb-4 leading-relaxed">
+                                Al confirmar, perderás tus privilegios Premium al final del ciclo actual.
+                                <br/><br/>
+                                <strong className="text-red-600">• Se cancelará toda tu publicidad activa inmediatamente.</strong>
+                                <br/>
+                                <strong className="text-red-600">• Tu negocio solo será visible en el mapa (sin destacar).</strong>
+                                <br/>
+                                <strong className="text-red-600">• No se te cobrará nada más.</strong>
+                            </p>
+                            <div className="flex gap-4">
+                                <button 
+                                    onClick={handleConfirmCancellation}
+                                    className="bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 shadow-lg flex-1"
+                                >
+                                    Sí, Cancelar Definitivamente
+                                </button>
+                                <button 
+                                    onClick={() => setShowCancelConfirm(false)}
+                                    className="bg-gray-100 text-gray-600 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 flex-1"
+                                >
+                                    Volver
+                                </button>
+                            </div>
                         </div>
                     ) : (
-                        <button 
-                            onClick={handleCancelSubscription}
-                            className="bg-white text-red-600 border border-red-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all shadow-sm"
-                        >
-                            Cancelar Suscripción
-                        </button>
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <p className="text-xs text-red-700 font-medium max-w-xl">
+                                Si cancelas tu suscripción, tu perfil dejará de ser visible en los listados y perderás tu posicionamiento. No se realizarán más cobros.
+                            </p>
+                            <button 
+                                onClick={() => setShowCancelConfirm(true)}
+                                className="bg-white text-red-600 border border-red-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                            >
+                                Cancelar Suscripción
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
           )}
 
+          {/* ... (Rest of the tabs: Publicidad, Media, Leads, Soporte - Preserved) ... */}
           {/* PUBLICIDAD TAB (ENHANCED WITH SAVINGS PACKS & WALLET) */}
           {activeTab === 'publicidad' && business && (
               <div className="space-y-12 animate-fade-in">
