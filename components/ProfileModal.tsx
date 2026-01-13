@@ -236,34 +236,32 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           }
 
           setIsUploadingStory(true);
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              const base64String = reader.result as string;
-              
-              // Only 1 story per day allowed for simplicity in this version, unless boosted
-              const newStory: BusinessStory = {
-                  id: `st_${Date.now()}`,
-                  timestamp: new Date().toISOString(),
-                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
-                  type: 'fresh_batch',
-                  text: storyText || (storyMediaType === 'video' ? '¡Sweet Reel del día!' : '¡Novedad del día!'),
-                  imageUrl: base64String, // Base64 data for image or video
-                  mediaType: storyMediaType
-              };
-
-              // Deduct credits if video
-              const newCredits = storyMediaType === 'video' ? credits - ACTION_COSTS.STORY_VIDEO : credits;
-
-              onUpdateBusiness(business.id, {
-                  stories: [newStory, ...(business.stories || [])].slice(0, 5), // Keep last 5 history
-                  credits: newCredits
-              });
-              
-              setIsUploadingStory(false);
-              setStoryText('');
-              alert(storyMediaType === 'video' ? "🎥 ¡Sweet Reel subido! Se han descontado 2 créditos." : "✨ Tu escaparate efímero se ha actualizado.");
+          
+          // Use Object URL to avoid Base64
+          const objectUrl = URL.createObjectURL(file);
+          
+          // Only 1 story per day allowed for simplicity in this version, unless boosted
+          const newStory: BusinessStory = {
+              id: `st_${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
+              type: 'fresh_batch',
+              text: storyText || (storyMediaType === 'video' ? '¡Sweet Reel del día!' : '¡Novedad del día!'),
+              imageUrl: objectUrl, // Blob URL
+              mediaType: storyMediaType
           };
-          reader.readAsDataURL(file);
+
+          // Deduct credits if video
+          const newCredits = storyMediaType === 'video' ? credits - ACTION_COSTS.STORY_VIDEO : credits;
+
+          onUpdateBusiness(business.id, {
+              stories: [newStory, ...(business.stories || [])].slice(0, 5), // Keep last 5 history
+              credits: newCredits
+          });
+          
+          setIsUploadingStory(false);
+          setStoryText('');
+          alert(storyMediaType === 'video' ? "🎥 ¡Sweet Reel subido! Se han descontado 2 créditos." : "✨ Tu escaparate efímero se ha actualizado.");
       }
   };
 
@@ -378,20 +376,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           return alert(`Has alcanzado el límite de ${limits.images} imágenes de tu plan ${currentPack?.label}.`);
       }
 
-      if (url.startsWith('data:image')) {
-          setIsUploading(true);
-          try {
-              const audit = await auditImageQuality(url);
-              if (!audit.passed) {
-                  alert(`Imagen rechazada por IA: ${audit.reason} (Score: ${audit.score}/100)`);
-                  setIsUploading(false);
-                  return;
-              }
-          } catch (e) {
-              console.error("Audit error", e);
-          } finally {
+      setIsUploading(true);
+      try {
+          const audit = await auditImageQuality(url);
+          if (!audit.passed) {
+              alert(`Imagen rechazada por IA: ${audit.reason} (Score: ${audit.score}/100)`);
               setIsUploading(false);
+              return;
           }
+      } catch (e) {
+          console.error("Audit error", e);
+      } finally {
+          setIsUploading(false);
       }
 
       onUpdateBusiness(business.id, { 
@@ -405,26 +401,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && business) {
-      setIsUploading(true);
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        await handleAddImage(base64String);
-        setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      };
-      reader.readAsDataURL(file);
+      // Use Object URL instead of Base64
+      const objectUrl = URL.createObjectURL(file);
+      handleAddImage(objectUrl);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleCustomBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              setCustomBannerImage(reader.result as string);
-          };
-          reader.readAsDataURL(file);
+          // Use Object URL
+          const objectUrl = URL.createObjectURL(file);
+          setCustomBannerImage(objectUrl);
       }
   };
 
