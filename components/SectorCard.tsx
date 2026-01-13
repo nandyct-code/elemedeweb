@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { SectorInfo } from '../types';
 
@@ -11,10 +12,10 @@ export const SectorCard: React.FC<SectorCardProps> = ({ sector, isActive, onClic
   return (
     <div
       onClick={onClick}
-      className={`relative group flex flex-col items-center p-6 rounded-3xl transition-all duration-300 transform cursor-pointer h-full ${
+      className={`relative group flex flex-col items-center p-6 rounded-3xl transition-all duration-300 transform cursor-pointer h-full active:scale-95 ${
         isActive 
           ? 'scale-105 ring-4 ring-orange-200 bg-white shadow-2xl z-10' 
-          : 'bg-white hover:bg-orange-50 hover:-translate-y-1 shadow-md border border-pink-50'
+          : 'bg-white hover:bg-orange-50 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-100/50 shadow-md border border-pink-50'
       }`}
     >
       <div className={`w-16 h-16 ${sector.color} rounded-2xl flex items-center justify-center text-3xl mb-4 shadow-sm group-hover:rotate-6 transition-all duration-300`}>

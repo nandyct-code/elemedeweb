@@ -3,12 +3,13 @@ import React, { useState, useMemo } from 'react';
 import { DiscountCode, Banner, Business, EmailTemplate, UserAccount, AdRequest, Invoice, SocialConfig, SupportTicket, SystemFinancialConfig, DemandZone, CouponTarget } from '../types';
 import { MOCK_EMAIL_TEMPLATES, SECTORS } from '../constants';
 import { getNotificationLogs } from '../services/notificationService';
+import { generateBannerImage } from '../services/geminiService';
 import { 
   Wand2, AlertOctagon, Settings, Tag, Mail, MessageSquare, 
   TrendingUp, MousePointer, Heart, Smile, Meh, Frown, 
   Euro, Sliders, ShieldAlert, Bot, Zap, Lock, BarChart3,
   Plus, Trash2, Save, Send, Link as LinkIcon, Instagram, Facebook, Twitter, Youtube, Video,
-  Layout, Calendar, Megaphone, Sparkles, Target
+  Layout, Calendar, Megaphone, Sparkles, Target, Image as ImageIcon, Store
 } from 'lucide-react';
 
 interface AdminMarketingModuleProps {
@@ -36,11 +37,22 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
   
   // STUDIO STATE (ENHANCED)
   const [studioMode, setStudioMode] = useState<'platform' | 'business'>('platform');
+  
+  // Platform Sub-states
   const [platformType, setPlatformType] = useState<'season' | 'boost'>('season');
   const [seasonName, setSeasonName] = useState('');
   const [targetSector, setTargetSector] = useState('');
+  
+  // Business Sub-states
+  const [selectedBusinessId, setSelectedBusinessId] = useState('');
+  const [forceAiGeneration, setForceAiGeneration] = useState(false); // Override business image with AI
+
   const [isGeneratingCampaign, setIsGeneratingCampaign] = useState(false);
   const [generatedPreview, setGeneratedPreview] = useState<any>(null);
+  
+  // CUSTOM PROMPT STATE (Advanced override)
+  const [useCustomPrompt, setUseCustomPrompt] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState('');
 
   // SETTINGS STATE (MANUAL PARAMETERS)
   const [configRates, setConfigRates] = useState({
@@ -137,36 +149,88 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
       onNotify("Ticket marcado como resuelto.");
   };
 
-  // NEW STUDIO HANDLERS
-  const handleGenerateCampaign = () => {
+  // --- MAIN BANNER GENERATION LOGIC ---
+  const handleGenerateCampaign = async () => {
+      // Validation
       if (studioMode === 'platform') {
           if (platformType === 'season' && !seasonName) return alert("Indica el nombre de la temporada (Ej: Navidad)");
           if (platformType === 'boost' && !targetSector) return alert("Selecciona un sector para impulsar");
       }
+      if (studioMode === 'business' && !selectedBusinessId) return alert("Selecciona un negocio");
 
       setIsGeneratingCampaign(true);
       setGeneratedPreview(null);
 
-      // Simulate AI Generation
-      setTimeout(() => {
-          setIsGeneratingCampaign(false);
-          const mockImage = platformType === 'season' 
-            ? 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=800' // Christmas/Season vibe
-            : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=800'; // Generic sweet vibe
+      let imageToUse = '';
+      let title = '';
+      let subtitle = '';
+      let cta = 'Saber Más';
 
-          const mockTitle = platformType === 'season' 
-            ? `Especial ${seasonName}: Dulces Momentos`
-            : `Descubre lo mejor de: ${SECTORS.find(s => s.id === targetSector)?.label}`;
+      try {
+          // --- CASE A: BUSINESS BANNER ---
+          if (studioMode === 'business') {
+              const biz = businesses.find(b => b.id === selectedBusinessId);
+              if (!biz) throw new Error("Negocio no encontrado");
+
+              title = biz.name;
+              subtitle = `Lo mejor de ${biz.city}`;
+              cta = 'Visitar Perfil';
+
+              // Priority 1: Use Business Image (if available and not forced to AI)
+              if (biz.mainImage && !forceAiGeneration && !useCustomPrompt) {
+                  imageToUse = biz.mainImage;
+              } 
+              // Priority 2: Generate AI Image
+              else {
+                  const basePrompt = useCustomPrompt ? imagePrompt : `High quality food photography of ${biz.sectorId.replace('_',' ')}, delicious, cinematic lighting, showcasing the products of a bakery named ${biz.name}`;
+                  const generatedUrl = await generateBannerImage(basePrompt);
+                  if (generatedUrl) {
+                      imageToUse = generatedUrl;
+                  } else {
+                      // Fallback if AI fails
+                      imageToUse = biz.mainImage || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=800';
+                      onNotify("⚠️ Fallo en IA. Usando imagen de respaldo.");
+                  }
+              }
+          } 
+          // --- CASE B: PLATFORM BANNER ---
+          else {
+              title = platformType === 'season' ? `Especial ${seasonName}` : `Descubre: ${SECTORS.find(s => s.id === targetSector)?.label}`;
+              subtitle = platformType === 'season' ? 'Colección de Temporada' : 'Impulso Local';
+              cta = 'Explorar';
+
+              // Always Generate AI for Platform (unless custom prompt overrides)
+              const contextPrompt = platformType === 'season' 
+                  ? `Festive food photography for ${seasonName}, pastries, sweets, celebration, 4k, cinematic`
+                  : `Delicious artisan ${targetSector.replace('_',' ')} close up, professional food photography, 4k`;
+              
+              const finalPrompt = useCustomPrompt && imagePrompt ? imagePrompt : contextPrompt;
+              
+              const generatedUrl = await generateBannerImage(finalPrompt);
+              if (generatedUrl) {
+                  imageToUse = generatedUrl;
+              } else {
+                  imageToUse = 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=800';
+                  onNotify("⚠️ Fallo en IA. Usando imagen de respaldo.");
+              }
+          }
 
           setGeneratedPreview({
-              title: mockTitle,
-              subtitle: platformType === 'season' ? 'Colección de Temporada' : 'Impulso Local',
-              imageUrl: mockImage,
-              ctaText: 'Explorar Ahora',
-              type: 'platform'
+              title,
+              subtitle,
+              imageUrl: imageToUse,
+              ctaText: cta,
+              type: studioMode === 'business' ? 'business_campaign' : 'sector_campaign',
+              linkedBusinessId: studioMode === 'business' ? selectedBusinessId : undefined
           });
-          onNotify("✨ Campaña de Plataforma generada por IA.");
-      }, 1500);
+          onNotify("✨ Diseño generado con éxito.");
+
+      } catch (e) {
+          console.error(e);
+          onNotify("❌ Error generando la campaña.");
+      } finally {
+          setIsGeneratingCampaign(false);
+      }
   };
 
   const handlePublishPlatformCampaign = () => {
@@ -177,7 +241,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
           title: generatedPreview.title,
           subtitle: generatedPreview.subtitle,
           imageUrl: generatedPreview.imageUrl,
-          type: 'sector_campaign',
+          type: generatedPreview.type,
           subtype: platformType === 'season' ? 'seasonality' : 'educational',
           format: 'horizontal',
           position: 'header',
@@ -187,14 +251,16 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
           visibility_rules: { roles: ['all'], plans: ['all'] },
           views: 0,
           clicks: 0,
-          ctaText: generatedPreview.ctaText
+          ctaText: generatedPreview.ctaText,
+          linkedBusinessId: generatedPreview.linkedBusinessId
       };
 
       onUpdateBanners(prev => [newBanner, ...prev]);
       setGeneratedPreview(null);
       setSeasonName('');
       setTargetSector('');
-      onNotify("🚀 Campaña de Plataforma publicada (Coste: 0€ - Interno)");
+      setSelectedBusinessId('');
+      onNotify("🚀 Campaña publicada y activa en la plataforma.");
   };
 
   // --- RENDER ---
@@ -356,24 +422,67 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
                                   </div>
                               </div>
                           )}
-
-                          <div className="mt-auto">
-                              <button 
-                                  onClick={handleGenerateCampaign} 
-                                  disabled={isGeneratingCampaign} 
-                                  className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-600 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
-                              >
-                                  {isGeneratingCampaign ? 'Diseñando...' : 'Generar Arte IA'}
-                              </button>
-                          </div>
                       </div>
                   ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50">
-                          <Target size={48} className="mb-4 text-gray-300" />
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Modo B2B para Clientes</p>
-                          <p className="text-[9px] text-gray-400 mt-2">Gestionar solicitudes individuales en pestaña "Control".</p>
+                      <div className="space-y-6 flex-1 flex flex-col animate-fade-in">
+                          <div>
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Seleccionar Negocio</label>
+                              <div className="relative mt-1">
+                                  <Store size={16} className="absolute left-3 top-3 text-gray-400" />
+                                  <select 
+                                      className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm pl-10 outline-none focus:border-gray-900"
+                                      value={selectedBusinessId}
+                                      onChange={e => setSelectedBusinessId(e.target.value)}
+                                  >
+                                      <option value="">Buscar negocio...</option>
+                                      {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                  </select>
+                              </div>
+                          </div>
+
+                          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                  <div className={`w-10 h-6 rounded-full relative transition-colors ${forceAiGeneration ? 'bg-purple-600' : 'bg-gray-300'}`}>
+                                      <input type="checkbox" className="hidden" checked={forceAiGeneration} onChange={() => setForceAiGeneration(!forceAiGeneration)} />
+                                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${forceAiGeneration ? 'translate-x-5' : 'translate-x-1'}`}></div>
+                                  </div>
+                                  <span className="text-[10px] font-black uppercase text-gray-600">Forzar Generación IA</span>
+                              </label>
+                              <p className="text-[9px] text-gray-400 mt-2">
+                                  {forceAiGeneration ? 'La IA creará una imagen nueva ignorando las fotos del negocio.' : 'Se priorizará la foto principal del negocio si existe.'}
+                              </p>
+                          </div>
                       </div>
                   )}
+
+                  {/* SHARED: CUSTOM IMAGE PROMPT */}
+                  <div className="border-t border-gray-100 pt-4 mt-auto">
+                      <button 
+                          onClick={() => setUseCustomPrompt(!useCustomPrompt)}
+                          className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-500 hover:text-purple-600 mb-2"
+                      >
+                          <ImageIcon size={12} /> {useCustomPrompt ? 'Usar Auto-Generación' : 'Personalizar Imagen (Prompt IA)'}
+                      </button>
+                      
+                      {useCustomPrompt && (
+                          <div className="animate-fade-in mb-4">
+                              <textarea 
+                                  className="w-full bg-purple-50/50 border border-purple-100 p-3 rounded-xl font-medium text-xs focus:border-purple-300 outline-none min-h-[80px]"
+                                  placeholder="Describe la imagen deseada en detalle (ej: 'Primer plano cinemático de un croissant brillante con luz de atardecer, 4k')..."
+                                  value={imagePrompt}
+                                  onChange={e => setImagePrompt(e.target.value)}
+                              />
+                          </div>
+                      )}
+
+                      <button 
+                          onClick={handleGenerateCampaign} 
+                          disabled={isGeneratingCampaign} 
+                          className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-600 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                          {isGeneratingCampaign ? 'Diseñando...' : 'Generar Banner'}
+                      </button>
+                  </div>
               </div>
 
               {/* PREVIEW (RIGHT PANEL) */}
@@ -384,7 +493,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
                           
                           {/* Banner Card Preview */}
                           <div className="bg-white rounded-[2rem] overflow-hidden shadow-2xl relative group">
-                              <div className="h-48 relative overflow-hidden">
+                              <div className="h-48 relative overflow-hidden bg-gray-100">
                                   <img src={generatedPreview.imageUrl} className="w-full h-full object-cover" />
                                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm">
                                       {generatedPreview.subtitle}

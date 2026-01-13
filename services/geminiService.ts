@@ -47,6 +47,39 @@ export const generateSweetContent = async (
   }
 };
 
+// --- IMAGE GENERATION FOR BANNERS ---
+export const generateBannerImage = async (prompt: string): Promise<string | null> => {
+  try {
+    const ai = getAiClient();
+    if (!ai) throw new Error("API Key missing");
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          { text: `Professional food photography, cinematic lighting, 4k, delicious, appetizing: ${prompt}` },
+        ],
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "16:9",
+        }
+      },
+    });
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        const base64EncodeString: string = part.inlineData.data;
+        return `data:image/png;base64,${base64EncodeString}`;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Error generating banner image:", error);
+    return null;
+  }
+};
+
 // --- IMAGE QUALITY AUDIT ---
 export const auditImageQuality = async (base64Image: string): Promise<{ passed: boolean; score: number; reason: string }> => {
   try {
