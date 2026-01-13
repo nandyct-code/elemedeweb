@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Banner } from '../types';
 
@@ -28,6 +29,8 @@ export const MarketingOverlay: React.FC<MarketingOverlayProps> = ({ banner, onCl
   }, [onClose]);
 
   if (!banner) return null;
+
+  const isBusinessAd = !!banner.linkedBusinessId;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -66,26 +69,31 @@ export const MarketingOverlay: React.FC<MarketingOverlayProps> = ({ banner, onCl
           <div className="space-y-6">
             <div>
                 <p className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] mb-2">
-                    {banner.linkedBusinessId ? 'Promoción Local' : 'Anuncio Global'}
+                    {isBusinessAd ? 'Negocio Destacado' : 'Promoción Especial'}
                 </p>
                 <h2 className="text-3xl md:text-4xl font-brand font-black text-gray-900 leading-none italic tracking-tighter">
                 {banner.title}
                 </h2>
+                {banner.subtitle && (
+                    <p className="text-xs font-bold text-gray-400 uppercase mt-2">{banner.subtitle}</p>
+                )}
             </div>
             
             <div className="space-y-4">
                 <div className="h-1 w-20 bg-gray-900 rounded-full"></div>
                 <p className="text-sm font-medium text-gray-500 leading-relaxed">
-                    Aprovecha esta oportunidad única disponible por tiempo limitado en la plataforma ELEMEDE.
+                    {isBusinessAd 
+                        ? "Haz clic para visitar el perfil de este negocio, ver sus productos y contactar." 
+                        : "Descubre las novedades que tenemos preparadas para ti en esta campaña exclusiva."}
                 </p>
             </div>
           </div>
 
           <button 
             onClick={onInterest || onClose}
-            className="mt-8 w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-orange-600 transition-all shadow-xl active:scale-95 group-hover:shadow-orange-200"
+            className="mt-8 w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-orange-600 transition-all shadow-xl active:scale-95 group-hover:shadow-orange-200 flex items-center justify-center gap-2"
           >
-            Me interesa
+            {isBusinessAd ? 'Visitar Perfil 🏪' : 'Explorar 💫'}
           </button>
         </div>
       </div>

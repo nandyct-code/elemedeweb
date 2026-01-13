@@ -9,7 +9,7 @@ import {
   TrendingUp, MousePointer, Heart, Smile, Meh, Frown, 
   Euro, Sliders, ShieldAlert, Bot, Zap, Lock, BarChart3,
   Plus, Trash2, Save, Send, Link as LinkIcon, Instagram, Facebook, Twitter, Youtube, Video,
-  Layout, Calendar, Megaphone, Sparkles, Target, Image as ImageIcon, Store
+  Layout, Calendar, Megaphone, Sparkles, Target, Image as ImageIcon, Store, RefreshCw
 } from 'lucide-react';
 
 interface AdminMarketingModuleProps {
@@ -223,7 +223,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
               type: studioMode === 'business' ? 'business_campaign' : 'sector_campaign',
               linkedBusinessId: studioMode === 'business' ? selectedBusinessId : undefined
           });
-          onNotify("✨ Diseño generado con éxito.");
+          onNotify("✨ Diseño generado con éxito. Revisa la vista previa.");
 
       } catch (e) {
           console.error(e);
@@ -506,7 +506,12 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
                           </div>
 
                           <div className="flex gap-4 mt-8">
-                              <button onClick={() => setGeneratedPreview(null)} className="flex-1 py-3 text-gray-400 font-black text-[10px] uppercase tracking-widest hover:text-gray-600">Descartar</button>
+                              <button onClick={() => setGeneratedPreview(null)} className="flex-1 py-3 text-gray-400 font-black text-[10px] uppercase tracking-widest hover:text-red-500 transition-colors">
+                                  Descartar
+                              </button>
+                              <button onClick={handleGenerateCampaign} className="flex-1 py-3 bg-white text-purple-600 border border-purple-200 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-50 transition-all flex items-center justify-center gap-2">
+                                  <RefreshCw size={14} className={isGeneratingCampaign ? 'animate-spin' : ''} /> Regenerar
+                              </button>
                               <button onClick={handlePublishPlatformCampaign} className="flex-[2] bg-green-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-green-700 shadow-lg flex items-center justify-center gap-2">
                                   <Zap size={14} /> Publicar (0€ Interno)
                               </button>

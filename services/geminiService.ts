@@ -16,6 +16,19 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Reliable Fallback Images (Since source.unsplash.com is deprecated/unreliable)
+const FALLBACK_IMAGES = [
+    'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1563729768-3980346f35d5?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1626803775151-61d756612f97?auto=format&fit=crop&q=80&w=1200'
+];
+
+const getFallbackImage = () => {
+    return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
+};
+
 // Generate a creative description and an image for a specific sweet idea
 export const generateSweetContent = async (
   prompt: string,
@@ -23,26 +36,44 @@ export const generateSweetContent = async (
 ): Promise<{ description: string; imageUrl?: string }> => {
   try {
     const ai = getAiClient();
-    if (!ai) throw new Error("API Key missing");
-
-    // 1. Generate Description
-    const textResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Escribe una descripción breve, sensual y apetitosa (máximo 80 palabras) para una creación de ${sector} basada en: "${prompt}". Enfócate en los sabores, texturas y la experiencia de comerlo.`,
-    });
     
-    const description = textResponse.text || "No se pudo generar una descripción.";
+    // 1. Generate Description
+    let description = "Descripción no disponible por el momento.";
+    if (ai) {
+        const textResponse = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Escribe una descripción breve, sensual y apetitosa (máximo 80 palabras) para una creación de ${sector} basada en: "${prompt}". Enfócate en los sabores, texturas y la experiencia de comerlo.`,
+        });
+        description = textResponse.text || description;
+    }
 
-    // 2. Generate Image Fallback (Hybrid approach)
-    const keywords = prompt.split(' ').slice(0, 3).join(',');
-    const imageUrl = `https://source.unsplash.com/800x800/?${sector},${keywords},sweet`;
+    // 2. Generate Image (Try AI first, then fallback)
+    let imageUrl = getFallbackImage();
+    if (ai) {
+        try {
+            const imgResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: {
+                    parts: [{ text: `Professional food photography of ${prompt}, ${sector}, high quality, 4k, delicious, cinematic lighting` }]
+                }
+            });
+            for (const part of imgResponse.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+                    break;
+                }
+            }
+        } catch (imgError) {
+            console.warn("AI Image generation failed, using fallback", imgError);
+        }
+    }
 
     return { description, imageUrl };
   } catch (error: any) {
     console.error("Error generating sweet content:", error);
     return { 
       description: "Descripción no disponible por el momento (Modo Offline).", 
-      imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&q=80&w=800" 
+      imageUrl: getFallbackImage()
     };
   }
 };
@@ -51,26 +82,32 @@ export const generateSweetContent = async (
 export const generateBannerImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = getAiClient();
-    if (!ai) throw new Error("API Key missing");
+    
+    if (!ai) return getFallbackImage();
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [
-          { text: `Professional food photography, cinematic lighting, 4k, delicious, appetizing: ${prompt}` },
-        ],
+        parts: [{ text: prompt + ", cinematic lighting, high resolution, professional photography, advertisement style" }]
       },
       config: {
-        imageConfig: {
-          aspectRatio: "16:9",
-        }
-      },
+          imageConfig: {
+              aspectRatio: "16:9"
+          }
+      }
     });
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
     
-    return null;
+    return getFallbackImage();
+
   } catch (error) {
     console.error("Error generating banner image:", error);
-    return null;
+    return getFallbackImage();
   }
 };
 
@@ -307,8 +344,25 @@ export const getUserProvince = async (lat: number, lng: number): Promise<string>
 };
 
 export const getSectorImage = async (prompt: string): Promise<string | null> => {
-  // Returns a curated Unsplash URL based on the AI prompt to ensure high quality
-  // (Real generation is possible but slow for UI backgrounds, this is a hybrid approach)
-  const keywords = prompt.replace(/ /g, ',');
-  return `https://source.unsplash.com/1600x900/?${keywords},food,dessert`;
+  try {
+      const ai = getAiClient();
+      if (!ai) return getFallbackImage();
+
+      const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+              parts: [{ text: prompt + ", professional food photography, 4k, delicious, detailed" }]
+          }
+      });
+
+      for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+              return `data:image/png;base64,${part.inlineData.data}`;
+          }
+      }
+      return getFallbackImage();
+  } catch (error) {
+      console.warn("Sector image gen failed, using fallback");
+      return getFallbackImage();
+  }
 };

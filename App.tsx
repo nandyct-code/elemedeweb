@@ -14,6 +14,8 @@ import {
 } from './constants';
 import { getUserProvince, getSectorDetails, getSectorImage } from './services/geminiService';
 import { fetchInitialData } from './services/supabase';
+// Ensure this import uses ./ and not @/
+import { calculateRankingScore } from './services/rankingAiService';
 
 // Components
 import { SectorCard } from './components/SectorCard';
@@ -179,9 +181,9 @@ export const App = () => {
     return Math.round(R * c);
   };
 
-  // --- COMPUTED VALUES (CORE LOGIC) ---
+  // --- COMPUTED VALUES (CORE LOGIC - AI RANKING) ---
 
-  // STRICT FILTERING with AD SPEND PRIORITY
+  // REPLACED OLD SORTING WITH AI RANKING SERVICE
   const filteredSectorBusinesses = useMemo(() => {
     const refLat = userLocation?.lat || 40.4168;
     const refLng = userLocation?.lng || -3.7038;
@@ -193,7 +195,7 @@ export const App = () => {
         pool = pool.filter(b => b.sectorId === activeSector);
     }
 
-    // 2. Strict Radius Check
+    // 2. Strict Radius Check (Hard Filter)
     pool = pool.filter(b => {
         const pack = subscriptionPacks.find(p => p.id === b.packId);
         if (!pack) return false;
@@ -206,25 +208,17 @@ export const App = () => {
         pool = pool.filter(b => selectedTags.every(tag => b.tags?.includes(tag)));
     }
 
-    // 4. Scoring & Sorting (AD SPEND -> PLAN -> DISTANCE)
-    return pool.sort((a, b) => {
-        // Priority 0: Total Ad Spend (Pay-to-Win Meritocracy)
-        const spendA = a.totalAdSpend || 0;
-        const spendB = b.totalAdSpend || 0;
-        if (spendA !== spendB) return spendB - spendA;
+    // 4. AI SCORING & SORTING
+    // We map to add the score, sort, then map back to business object
+    const scoredBusinesses = pool.map(b => ({
+        business: b,
+        score: calculateRankingScore(b, refLat, refLng, subscriptionPacks, MAX_SYSTEM_RADIUS)
+    }));
 
-        // Priority 1: Plan Tier
-        const packA = subscriptionPacks.find(p => p.id === a.packId);
-        const packB = subscriptionPacks.find(p => p.id === b.packId);
-        const scoreA = packA?.sortingScore || 0;
-        const scoreB = packB?.sortingScore || 0;
-        if (scoreA !== scoreB) return scoreB - scoreA; 
+    // Sort descending by AI Score
+    scoredBusinesses.sort((a, b) => b.score - a.score);
 
-        // Priority 2: Distance
-        const distA = calculateDistance(refLat, refLng, a.lat, a.lng);
-        const distB = calculateDistance(refLat, refLng, b.lat, b.lng);
-        return distA - distB; 
-    });
+    return scoredBusinesses.map(item => item.business);
 
   }, [businesses, activeSector, userLocation, selectedTags, subscriptionPacks]);
 
@@ -461,7 +455,18 @@ export const App = () => {
         socialLinks={socialLinks} 
       />
       
-      <BannerManager banners={banners} businesses={businesses} context="footer_sticky" userLocation={userLocation} />
+      {/* BANNER MANAGER POP-UPS & HEADER INJECTIONS */}
+      {/* 1. Global/Sector Banners in Home Header (Static/Slider) */}
+      
+      {/* 2. Persistent Popups (Business Campaigns + Sticky) */}
+      <BannerManager 
+        banners={banners} 
+        businesses={businesses} 
+        context="footer_sticky" 
+        userLocation={userLocation} 
+        onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
+        onSelectSector={(id) => setActiveSector(id)}
+      />
       
       {/* UPDATED: Pass location and business data to NotificationCenter for geofencing */}
       <NotificationCenter 
@@ -550,7 +555,7 @@ export const App = () => {
                     Un mundo dulce a un solo click.
                 </p>
 
-                {/* HOME BANNERS */}
+                {/* HOME BANNERS - Header Position */}
                 <div className="max-w-4xl mx-auto mt-8 px-4">
                     <BannerManager 
                         banners={banners} 
@@ -558,6 +563,8 @@ export const App = () => {
                         context="home" 
                         userLocation={userLocation}
                         maxBanners={1}
+                        onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
+                        onSelectSector={(id) => setActiveSector(id)}
                     />
                 </div>
             </section>
@@ -610,7 +617,17 @@ export const App = () => {
                 <div className="space-y-8">
                     <h3 className="text-3xl font-brand font-black text-gray-900 text-center uppercase italic">Los Mejores en tu Radio</h3>
                     <BusinessShowcase businesses={filteredSectorBusinesses} userLocation={userLocation} currentRadius={MAX_SYSTEM_RADIUS} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} currentUser={currentUser} onToggleFavorite={(id) => { if (!currentUser) return setIsAuthModalOpen(true); const newFavs = currentUser.favorites?.includes(id) ? currentUser.favorites.filter(f => f !== id) : [...(currentUser.favorites || []), id]; handleUpdateUser({ ...currentUser, favorites: newFavs }); }} />
-                    <div className="max-w-4xl mx-auto"><BannerManager businesses={businesses} banners={banners} context="business_list" userLocation={userLocation} activeSectorId={activeSector} /></div>
+                    <div className="max-w-4xl mx-auto">
+                        <BannerManager 
+                            businesses={businesses} 
+                            banners={banners} 
+                            context="business_list" 
+                            userLocation={userLocation} 
+                            activeSectorId={activeSector} 
+                            onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)}
+                            onSelectSector={(id) => setActiveSector(id)}
+                        />
+                    </div>
                 </div>
 
                 <NewSubscribersBanner businesses={businesses.filter(b => b.sectorId === activeSector)} sectorLabel={SECTORS.find(s => s.id === activeSector)?.label || ''} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} />
