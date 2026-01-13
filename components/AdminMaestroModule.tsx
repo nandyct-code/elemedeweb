@@ -336,7 +336,7 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
                   <div className="mt-8 bg-gray-900 text-white p-6 rounded-2xl flex justify-between items-center">
                       <div>
                           <h5 className="font-bold text-sm mb-1">Cuentas Zombie Detectadas</h5>
-                          <p className="text-xs text-gray-400">Usuarios inactivos > 6 meses: <span className="text-orange-500 font-black">{zombieCount}</span></p>
+                          <p className="text-xs text-gray-400">Usuarios inactivos 6 meses: <span className="text-orange-500 font-black">{zombieCount}</span></p>
                       </div>
                       <button onClick={handleCleanZombies} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
                           <Trash2 size={14} /> Ejecutar Limpieza
