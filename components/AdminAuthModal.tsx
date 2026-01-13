@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { UserAccount } from '../types';
-import { MOCK_USERS } from '../constants';
+import { dataService } from '../services/supabase'; // PHASE 3: REAL SERVICE
 
 interface AdminAuthModalProps {
   isOpen: boolean;
@@ -16,30 +17,30 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(false);
     
-    // Validación contra el repositorio Maestro de MOCK_USERS
-    setTimeout(() => {
-      const adminUser = MOCK_USERS.find(u => 
-        u.email.toLowerCase() === email.toLowerCase() && 
-        u.password_hash === password && 
-        (u.role === 'admin_maestro' || u.role === 'marketing_master' || u.role === 'contabilidad_master')
-      );
+    try {
+      // Validate against Persistent DB
+      const adminUser = await dataService.authenticate(email, password);
 
-      if (adminUser) {
+      if (adminUser && (adminUser.role.startsWith('admin_') || adminUser.role.includes('master'))) {
         onSuccess(adminUser);
         setEmail('');
         setPassword('');
-        setError(false);
       } else {
         setError(true);
-        console.warn(`[SECURITY BREACH ATTEMPT] Admin login failed for: ${email}`);
+        console.warn(`[SECURITY] Failed admin login attempt: ${email}`);
         setTimeout(() => setError(false), 3000);
       }
+    } catch (e) {
+      console.error(e);
+      setError(true);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -76,7 +77,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose,
 
           {error && (
             <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-[10px] font-black uppercase text-center animate-shake border border-red-100">
-              ⚠️ Credenciales maestras no válidas para esta terminal
+              ⚠️ Credenciales maestras no válidas o sin privilegios
             </div>
           )}
 

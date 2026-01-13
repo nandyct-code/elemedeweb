@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { UserAccount } from '../types';
-import { MOCK_USERS } from '../constants';
+import { dataService } from '../services/supabase'; // PHASE 3: REAL SERVICE
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     email: '',
     password: ''
   });
+  const [errorMsg, setErrorMsg] = useState('');
   
   // Recovery State
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -33,7 +34,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
   const handleSocialLogin = (provider: 'google' | 'facebook' | 'apple') => {
     setIsSubmitting(provider);
     
-    setTimeout(() => {
+    setTimeout(async () => {
       const newUser: UserAccount = {
         id: Math.random().toString(36).substr(2, 9),
         name: `Usuario ${provider.charAt(0).toUpperCase() + provider.slice(1)}`,
@@ -53,44 +54,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     }, 1500);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg('');
     setIsSubmitting('email');
     
-    setTimeout(() => {
-      // 1. Check for ADMIN CREDENTIALS in MOCK_USERS (Updated for new Roles)
-      const existingAdmin = MOCK_USERS.find(u => 
-        u.email.toLowerCase() === formData.email.toLowerCase() && 
-        u.password_hash === formData.password && 
-        (u.role.startsWith('admin_') || u.role.includes('master'))
-      );
+    try {
+        if (mode === 'login') {
+            // PHASE 3: SECURE AUTH CHECK
+            const user = await dataService.authenticate(formData.email, formData.password);
+            
+            if (user) {
+                if (user.status === 'banned') {
+                    setErrorMsg("Esta cuenta ha sido suspendida.");
+                    setIsSubmitting(null);
+                    return;
+                }
+                onLogin(user);
+                setIsSubmitting(null);
+                onClose();
+            } else {
+                setErrorMsg("Credenciales incorrectas. Inténtalo de nuevo.");
+                setIsSubmitting(null);
+            }
+        } else {
+            // SIGNUP FLOW
+            // Check if user exists (Simple check, real backend would handle this)
+            const allUsers = await dataService.getUsers();
+            if (allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase())) {
+                setErrorMsg("Este email ya está registrado.");
+                setIsSubmitting(null);
+                return;
+            }
 
-      if (existingAdmin) {
-        console.log("Admin detected:", existingAdmin.role);
-        onLogin(existingAdmin);
+            const newUser: UserAccount = {
+                id: Math.random().toString(36).substr(2, 9),
+                name: formData.nombre || formData.email.split('@')[0],
+                email: formData.email,
+                password_hash: formData.password, // In real app, hash this!
+                role: role as any,
+                status: 'active',
+                last_login: new Date().toISOString(),
+                date_registered: new Date().toISOString(),
+                provider: 'email',
+                linkedBusinessId: role === 'business_owner' ? 'pending_setup' : undefined 
+            };
+            
+            // Persist new user via App handler (which calls dataService)
+            onLogin(newUser); 
+            setIsSubmitting(null);
+            onClose();
+        }
+    } catch (err) {
+        console.error(err);
+        setErrorMsg("Error de conexión. Inténtalo más tarde.");
         setIsSubmitting(null);
-        onClose();
-        return;
-      }
-
-      // 2. Regular User/Business Simulation
-      const newUser: UserAccount = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: formData.nombre || formData.email.split('@')[0],
-        email: formData.email,
-        password_hash: 'hashed_pass',
-        role: role as any,
-        status: 'active',
-        last_login: new Date().toISOString(),
-        date_registered: new Date().toISOString(),
-        provider: 'email',
-        linkedBusinessId: role === 'business_owner' ? '5' : undefined 
-      };
-      
-      onLogin(newUser);
-      setIsSubmitting(null);
-      onClose();
-    }, 1200);
+    }
   };
 
   const handleRecoverySubmit = (e: React.FormEvent) => {
@@ -101,13 +120,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     
     setTimeout(() => {
         setRecoveryStatus('sent');
-        const tempPass = Math.random().toString(36).slice(-8).toUpperCase();
-        console.log(`[SIMULACIÓN EMAIL] Para: ${recoveryEmail} | Nueva Contraseña: ${tempPass}`);
-        alert(`(SIMULACIÓN) Hemos enviado un correo a ${recoveryEmail}.\n\nContraseña temporal generada: ${tempPass}\n\nÚsala para acceder y cámbiala en tu perfil.`);
+        // Simulation only
+        alert(`(SISTEMA) Hemos enviado un correo a ${recoveryEmail} con instrucciones.`);
     }, 1500);
   };
 
   const handleModeSwitch = () => {
+    setErrorMsg('');
     if (mode === 'signup') {
       setMode('login');
     } else {
@@ -264,6 +283,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                         <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-xl text-gray-400 border-2 border-transparent group-focus-within:border-orange-200 group-focus-within:text-orange-500 group-focus-within:bg-white transition-all shadow-sm">🔒</div>
                         <input required type="password" placeholder="Contraseña" className="input-field flex-1" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
                     </div>
+
+                    {errorMsg && (
+                        <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl text-center animate-shake border border-red-100">
+                            ⚠️ {errorMsg}
+                        </div>
+                    )}
 
                     <button 
                         disabled={!!isSubmitting}

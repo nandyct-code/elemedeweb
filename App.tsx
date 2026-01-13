@@ -7,15 +7,13 @@ import {
   ForumAnswer, Rating, Lead, PushCampaign, SubscriptionPack
 } from './types';
 import { 
-  SECTORS, MOCK_BUSINESSES, MOCK_USERS, MOCK_BANNERS, 
-  MOCK_DISCOUNT_CODES, MOCK_FORUM, MOCK_INVOICES, 
-  DEFAULT_SOCIAL_LINKS, INITIAL_SYSTEM_FINANCIALS, COUNTRIES_DB,
-  LEGAL_TEXTS, ALL_LEGAL_DOCS, SUBSCRIPTION_PACKS, MAX_SYSTEM_RADIUS, MOCK_LEADS
+  SECTORS, DEFAULT_SOCIAL_LINKS, INITIAL_SYSTEM_FINANCIALS, COUNTRIES_DB,
+  LEGAL_TEXTS, ALL_LEGAL_DOCS, SUBSCRIPTION_PACKS, MAX_SYSTEM_RADIUS, ACTION_COSTS
 } from './constants';
 import { getUserProvince, getSectorDetails, getSectorImage } from './services/geminiService';
-import { fetchInitialData } from './services/supabase';
-// Ensure this import uses ./ and not @/
+import { dataService } from './services/supabase'; // PHASE 1: Data Service
 import { calculateRankingScore } from './services/rankingAiService';
+import { stripeService } from './services/stripeService';
 
 // Components
 import { SectorCard } from './components/SectorCard';
@@ -46,17 +44,19 @@ import { SubscriptionModal } from './components/SubscriptionModal';
 import { BusinessProfileModal } from './components/BusinessProfileModal';
 import { ProfileModal } from './components/ProfileModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { Loader2 } from 'lucide-react';
 
 export const App = () => {
-  // --- STATE ---
-  const [users, setUsers] = useState<UserAccount[]>(MOCK_USERS);
-  const [businesses, setBusinesses] = useState<Business[]>(MOCK_BUSINESSES);
-  const [invoices, setInvoices] = useState<Invoice[]>(MOCK_INVOICES);
-  const [banners, setBanners] = useState<Banner[]>(MOCK_BANNERS);
-  const [coupons, setCoupons] = useState<DiscountCode[]>(MOCK_DISCOUNT_CODES);
-  const [forumQuestions, setForumQuestions] = useState<ForumQuestion[]>(MOCK_FORUM);
+  // --- STATE (INITIALIZED EMPTY FOR PHASE 1 DATA LOADING) ---
+  const [isAppLoading, setIsAppLoading] = useState(true);
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [banners, setBanners] = useState<Banner[]>([]);
+  const [coupons, setCoupons] = useState<DiscountCode[]>([]);
+  const [forumQuestions, setForumQuestions] = useState<ForumQuestion[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [pushCampaigns, setPushCampaigns] = useState<PushCampaign[]>([]);
   
   // System Config (Lifted State)
@@ -85,7 +85,6 @@ export const App = () => {
   // Tag Filtering State
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   
-  const [mapCenterOverride, setMapCenterOverride] = useState<{ lat: number; lng: number } | null>(null);
   const [showGeoPrompt, setShowGeoPrompt] = useState(false);
   const [marketingBanner, setMarketingBanner] = useState<Banner | null>(null);
   const [welcomeData, setWelcomeData] = useState<{ name: string; plan: string } | null>(null);
@@ -102,28 +101,48 @@ export const App = () => {
   const [infoModalState, setInfoModalState] = useState<{ open: boolean; title: string; content: string }>({ open: false, title: '', content: '' });
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
-  // --- SUPABASE INIT ---
+  // --- PHASE 1: DATA LAYER INITIALIZATION ---
   useEffect(() => {
-    const loadData = async () => {
-      const data = await fetchInitialData();
-      if (data) {
-        if (data.businesses.length > 0) setBusinesses(data.businesses);
-        if (data.users.length > 0) {
-            // Merge existing mock users (like admins) with real users
-            const combinedUsers = [...MOCK_USERS.filter(u => u.role.startsWith('admin')), ...data.users];
-            setUsers(combinedUsers);
+    const initApp = async () => {
+        try {
+            // Load all data from DataService (Abstraction Layer)
+            const data = await dataService.fetchAll();
+            
+            // Hydrate State
+            setBusinesses(data.businesses);
+            setUsers(data.users);
+            setInvoices(data.invoices);
+            setBanners(data.banners);
+            setCoupons(data.coupons);
+            setForumQuestions(data.forum);
+            setLeads(data.leads);
+            
+            // Check for persistent session (Simple Token Simulation)
+            const storedUserId = localStorage.getItem('elemede_session_user');
+            if (storedUserId) {
+                const returningUser = data.users.find(u => u.id === storedUserId);
+                if (returningUser) setCurrentUser(returningUser);
+            }
+
+        } catch (error) {
+            console.error("Critical Init Error:", error);
+        } finally {
+            setIsAppLoading(false);
         }
-      }
     };
-    loadData();
+
+    initApp();
   }, []);
+
+  // --- PHASE 2 CORRECTION: BILLING ---
+  // The client-side auto-billing loop has been removed to comply with security standards.
+  // Billing is now a server-side process located in stripeService.processRecurringBilling
+  // which can be triggered manually by Admins in the Dashboard or via Webhooks.
 
   // --- PWA INSTALLATION EVENT ---
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Stash the event so it can be triggered later.
       setInstallPrompt(e);
     };
 
@@ -136,15 +155,9 @@ export const App = () => {
 
   const handleInstallApp = async () => {
     if (!installPrompt) return;
-    
-    // Show the install prompt
     installPrompt.prompt();
-    
-    // Wait for the user to respond to the prompt
     const { outcome } = await installPrompt.userChoice;
-    console.log(`User response to the install prompt: ${outcome}`);
-    
-    // We've used the prompt, and can't use it again, throw it away
+    console.log(`User response: ${outcome}`);
     setInstallPrompt(null);
   };
 
@@ -161,7 +174,6 @@ export const App = () => {
         (position) => {
           const { latitude, longitude } = position.coords;
           setUserLocation({ lat: latitude, lng: longitude });
-          setMapCenterOverride(null);
           detectLocation(latitude, longitude);
         },
         () => console.warn("Geo blocked or denied"),
@@ -171,7 +183,7 @@ export const App = () => {
   }, []);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371e3; // meters
+    const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;
     const Δφ = (lat2 - lat1) * Math.PI / 180;
@@ -181,21 +193,17 @@ export const App = () => {
     return Math.round(R * c);
   };
 
-  // --- COMPUTED VALUES (CORE LOGIC - AI RANKING) ---
-
-  // REPLACED OLD SORTING WITH AI RANKING SERVICE
+  // --- COMPUTED VALUES ---
   const filteredSectorBusinesses = useMemo(() => {
     const refLat = userLocation?.lat || 40.4168;
     const refLng = userLocation?.lng || -3.7038;
 
     let pool = businesses.filter(b => b.status === 'active');
 
-    // 1. Sector Filter
     if (activeSector) {
         pool = pool.filter(b => b.sectorId === activeSector);
     }
 
-    // 2. Strict Radius Check (Hard Filter)
     pool = pool.filter(b => {
         const pack = subscriptionPacks.find(p => p.id === b.packId);
         if (!pack) return false;
@@ -203,26 +211,22 @@ export const App = () => {
         return dist <= pack.visibilityRadius;
     });
 
-    // 3. Tag Filtering
     if (selectedTags.length > 0) {
         pool = pool.filter(b => selectedTags.every(tag => b.tags?.includes(tag)));
     }
 
-    // 4. AI SCORING & SORTING
-    // We map to add the score, sort, then map back to business object
     const scoredBusinesses = pool.map(b => ({
         business: b,
         score: calculateRankingScore(b, refLat, refLng, subscriptionPacks, MAX_SYSTEM_RADIUS)
     }));
 
-    // Sort descending by AI Score
     scoredBusinesses.sort((a, b) => b.score - a.score);
 
     return scoredBusinesses.map(item => item.business);
 
   }, [businesses, activeSector, userLocation, selectedTags, subscriptionPacks]);
 
-  // ... (Effects for Geo, Sector Details, Banners preserved) ...
+  // ... (Effects for Geo, Sector Details preserved) ...
   useEffect(() => {
     const seen = localStorage.getItem('elemede_geo_prompt_seen');
     if (!seen) {
@@ -279,18 +283,32 @@ export const App = () => {
     }, 100);
   };
 
-  const handleLogin = (user: UserAccount) => {
-    const existing = users.find(u => u.email === user.email);
-    if (existing) {
-        setCurrentUser(existing);
-    } else {
-        setUsers(prev => [...prev, user]);
-        setCurrentUser(user);
-    }
+  // --- PHASE 3: SECURE AUTH HANDLER ---
+  const handleLogin = async (user: UserAccount) => {
+    // In Phase 3, we treat login as a server request
+    const authUser = await dataService.authenticate(user.email, user.password_hash);
     
-    // Check for any type of admin role to open dashboard
-    if (user.role.startsWith('admin_') || user.role.includes('master')) {
-        setIsAdminDashboardOpen(true);
+    if (authUser) {
+        setUsers(prev => prev.map(u => u.id === authUser.id ? authUser : u)); // Update last login in state
+        setCurrentUser(authUser);
+        localStorage.setItem('elemede_session_user', authUser.id);
+        
+        if (authUser.role.startsWith('admin_') || authUser.role.includes('master')) {
+            setIsAdminDashboardOpen(true);
+        }
+    } else {
+        // Fallback for new registrations not yet in DB during session
+        const existing = users.find(u => u.email === user.email);
+        if (existing) {
+            setCurrentUser(existing);
+            localStorage.setItem('elemede_session_user', existing.id);
+        } else {
+            // New user registration flow
+            const created = await dataService.createUser(user);
+            setUsers(prev => [...prev, created]);
+            setCurrentUser(created);
+            localStorage.setItem('elemede_session_user', created.id);
+        }
     }
   };
 
@@ -298,9 +316,10 @@ export const App = () => {
     setCurrentUser(null);
     setIsProfileModalOpen(false);
     setIsAdminDashboardOpen(false);
+    localStorage.removeItem('elemede_session_user');
   };
 
-  const handleSubscriptionSuccess = (data: SubscriptionFormData, generatedId: string) => {
+  const handleSubscriptionSuccess = async (data: SubscriptionFormData, generatedId: string) => {
     const mainLat = userLocation?.lat || 40.4168; 
     const mainLng = userLocation?.lng || -3.7038;
 
@@ -332,7 +351,7 @@ export const App = () => {
         ratings: [],
         reliabilityScore: 50, 
         stats: { views: 0, clicks: 0, ctr: 0, saturationIndex: 0 },
-        totalAdSpend: 0 // New metric init
+        totalAdSpend: 0
     };
 
     const newUser: UserAccount = {
@@ -347,6 +366,10 @@ export const App = () => {
         is_first_login: true
     };
 
+    // PHASE 1: Persist to Data Layer
+    await dataService.createBusiness(newBusiness);
+    await dataService.createUser(newUser);
+
     setBusinesses(prev => [...prev, newBusiness]);
     setUsers(prev => [...prev, newUser]);
     setCurrentUser(newUser);
@@ -354,11 +377,13 @@ export const App = () => {
     setWelcomeData({ name: newBusiness.name, plan: data.packId });
   };
 
-  const handleUpdateBusiness = (id: string, updates: Partial<Business>) => {
+  const handleUpdateBusiness = async (id: string, updates: Partial<Business>) => {
+    await dataService.updateBusiness(id, updates);
     setBusinesses(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   };
 
-  const handleUpdateUser = (updatedUser: UserAccount) => {
+  const handleUpdateUser = async (updatedUser: UserAccount) => {
+    await dataService.updateUser(updatedUser);
     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
     if (currentUser?.id === updatedUser.id) setCurrentUser(updatedUser);
   };
@@ -370,33 +395,78 @@ export const App = () => {
   };
 
   const handleAddRating = (bizId: string, rating: Rating) => {
+      // In real implementation, this calls DataService
       setBusinesses(prev => prev.map(b => {
           if (b.id === bizId) {
-              return { ...b, ratings: [...(b.ratings || []), rating] };
+              const updated = { ...b, ratings: [...(b.ratings || []), rating] };
+              dataService.updateBusiness(bizId, { ratings: updated.ratings });
+              return updated;
           }
           return b;
       }));
   };
 
+  // --- AUTOMATION 5: LEAD MATCHING & PUSH NOTIFICATIONS ---
   const handleNewLead = (lead: Lead) => {
       setLeads(prev => [lead, ...prev]);
-      alert("¡Solicitud enviada! Los mejores profesionales de la zona han sido notificados.");
+      // (Data service persist normally here)
+      
+      // 1. Intelligent Matching Logic
+      const matchingBusinesses = businesses.filter(biz => {
+          // A. Province Match (Fuzzy)
+          const locationMatch = lead.location.toLowerCase().includes(biz.city.toLowerCase()) || 
+                                lead.location.toLowerCase().includes(biz.province.toLowerCase());
+          
+          if (!locationMatch) return false;
+
+          // B. Sector/Tag Match
+          const sectorMatch = (
+              (lead.eventType === 'boda' && ['mesas_dulces', 'reposteria_creativa'].includes(biz.sectorId)) ||
+              (lead.eventType === 'comunion' && ['mesas_dulces', 'tiendas_chucherias'].includes(biz.sectorId)) ||
+              (lead.eventType === 'corporativo' && ['pasteleria', 'mesas_dulces'].includes(biz.sectorId))
+          );
+
+          const tagsMatch = biz.tags?.some(tag => lead.description.toLowerCase().includes(tag.toLowerCase()));
+
+          return sectorMatch || tagsMatch;
+      });
+
+      // 2. Generate Automated Campaigns
+      const newCampaigns: PushCampaign[] = matchingBusinesses.map(biz => ({
+          id: `push_auto_${Date.now()}_${biz.id}`,
+          businessId: biz.id,
+          businessName: "Sistema ELEMEDE",
+          message: `¡Oportunidad! Nuevo lead compatible: ${lead.eventType.toUpperCase()} en ${lead.location}. Presupuesto: ${lead.budget}. ¡Sé el primero en contactar!`,
+          sentAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
+          reach: 1, 
+          cost: 0 
+      }));
+
+      // 3. Dispatch Notifications
+      if (newCampaigns.length > 0) {
+          setPushCampaigns(prev => [...newCampaigns, ...prev]);
+          if (currentUser?.role.includes('admin') || currentUser?.role === 'business_owner') {
+              setIsNotifCenterOpen(true);
+              setTimeout(() => setIsNotifCenterOpen(false), 6000);
+          }
+      }
+
+      alert(`¡Solicitud enviada! Hemos notificado automáticamente a ${matchingBusinesses.length} profesionales compatibles en la zona.`);
   };
 
-  // --- NEW: HANDLE FLASH PUSH ---
   const handleNewPushCampaign = (campaign: PushCampaign) => {
       setPushCampaigns(prev => [campaign, ...prev]);
-      // Also notify visually
       setIsNotifCenterOpen(true);
       setTimeout(() => setIsNotifCenterOpen(false), 5000);
   };
 
-  // --- NEW: HANDLE BATTLE VOTE ---
   const handleBattleVote = (winnerId: string) => {
-      // Simulate backend update for gamification
       setBusinesses(prev => prev.map(b => {
           if (b.id === winnerId) {
-              return { ...b, battleWins: (b.battleWins || 0) + 1 };
+              const updated = { ...b, battleWins: (b.battleWins || 0) + 1 };
+              dataService.updateBusiness(winnerId, { battleWins: updated.battleWins });
+              return updated;
           }
           return b;
       }));
@@ -418,12 +488,21 @@ export const App = () => {
       setInfoModalState({ open: true, title, content });
   };
 
+  if (isAppLoading) {
+      return (
+          <div className="fixed inset-0 flex flex-col items-center justify-center bg-orange-50 z-50">
+              <Loader2 size={48} className="text-orange-500 animate-spin mb-4" />
+              <h2 className="font-brand font-black text-xl text-gray-900 uppercase tracking-widest">Iniciando Elemede</h2>
+              <p className="text-xs text-gray-500 font-medium mt-2">Cargando datos seguros...</p>
+          </div>
+      );
+  }
+
   return (
     <div className="min-h-screen bg-white font-brand text-gray-900 relative selection:bg-pink-200 selection:text-pink-900">
       
       {/* Background Icons Pattern */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-[0.03] select-none">
-          {/* ... Icons ... */}
           <div className="absolute top-[5%] left-[5%] text-9xl transform -rotate-12">🧁</div>
           <div className="absolute top-[60%] right-[20%] text-9xl transform rotate-12">🥨</div>
       </div>
@@ -435,11 +514,10 @@ export const App = () => {
       {showGeoPrompt && <GeoLocationModal onEnable={handleGeoEnable} onSkip={() => { setShowGeoPrompt(false); localStorage.setItem('elemede_geo_prompt_seen', 'true'); }} />}
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onOpenSubscription={() => { setIsAuthModalOpen(false); setIsSubscriptionModalOpen(true); }} />
       
-      {/* Subscription Modal Now Receives Dynamic Pricing */}
-      <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} onSuccess={handleSubscriptionSuccess} onInvoiceGenerated={(inv) => setInvoices(prev => [inv, ...prev])} existingBusinesses={businesses} existingUsers={users} currentCountry={COUNTRIES_DB.find(c => c.code === currentCountryCode)!} countryFinancials={systemFinancials[currentCountryCode]} subscriptionPacks={subscriptionPacks} />
+      <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} onSuccess={handleSubscriptionSuccess} onInvoiceGenerated={(inv) => { setInvoices(prev => [inv, ...prev]); dataService.createInvoice(inv); }} existingBusinesses={businesses} existingUsers={users} currentCountry={COUNTRIES_DB.find(c => c.code === currentCountryCode)!} countryFinancials={systemFinancials[currentCountryCode]} subscriptionPacks={subscriptionPacks} />
       
       {isAdminDashboardOpen && currentUser && <AdminDashboard isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)} currentUser={currentUser} businesses={businesses} onUpdateBusiness={handleUpdateBusiness} users={users} onUpdateUser={handleUpdateUser} onUpdateUserStatus={(id, status) => setUsers(prev => prev.map(u => u.id === id ? { ...u, status } : u))} onDeleteUser={(id) => setUsers(prev => prev.filter(u => u.id !== id))} onDeleteBusiness={(id) => setBusinesses(prev => prev.filter(b => b.id !== id))} invoices={invoices} setInvoices={setInvoices} banners={banners} onUpdateBanners={setBanners} maintenanceMode={maintenanceMode} setMaintenanceMode={setMaintenanceMode} onLogout={handleLogout} onSwitchSession={setCurrentUser} tickets={tickets} onUpdateTicket={(id, updates) => setTickets(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))} bannedWords={bannedWords} setBannedWords={setBannedWords} coupons={coupons} setCoupons={setCoupons} forumQuestions={forumQuestions} onDeleteForumQuestion={handleDeleteQuestion} socialLinks={socialLinks} setSocialLinks={setSocialLinks} systemFinancials={systemFinancials} setSystemFinancials={setSystemFinancials} subscriptionPacks={subscriptionPacks} setSubscriptionPacks={setSubscriptionPacks} />}
-      {currentUser && isProfileModalOpen && <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={currentUser} businesses={businesses} onUpdateUser={handleUpdateUser} onUpdateBusiness={handleUpdateBusiness} onLogout={handleLogout} invoices={invoices} onGenerateInvoice={(inv) => setInvoices(prev => [inv, ...prev])} coupons={coupons} tickets={tickets} onCreateTicket={(t) => setTickets(prev => [...prev, t])} systemConfig={systemFinancials[currentCountryCode]} leads={leads} onSendPush={handleNewPushCampaign} />}
+      {currentUser && isProfileModalOpen && <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={currentUser} businesses={businesses} onUpdateUser={handleUpdateUser} onUpdateBusiness={handleUpdateBusiness} onLogout={handleLogout} invoices={invoices} onGenerateInvoice={(inv) => { setInvoices(prev => [inv, ...prev]); dataService.createInvoice(inv); }} coupons={coupons} tickets={tickets} onCreateTicket={(t) => setTickets(prev => [...prev, t])} systemConfig={systemFinancials[currentCountryCode]} leads={leads} onSendPush={handleNewPushCampaign} />}
       {viewedBusiness && <BusinessProfileModal isOpen={!!viewedBusiness} onClose={() => setViewedBusiness(null)} business={viewedBusiness} currentUser={currentUser} onAddRating={handleAddRating} onLoginRequest={() => { setViewedBusiness(null); setIsAuthModalOpen(true); }} />}
       {welcomeData && <WelcomeSuccessBanner businessName={welcomeData.name} planId={welcomeData.plan} onContinue={() => { setWelcomeData(null); setIsProfileModalOpen(true); }} />}
       {marketingBanner && <MarketingOverlay banner={marketingBanner} onClose={() => { sessionStorage.setItem(`seen_banner_${marketingBanner.id}`, 'true'); setMarketingBanner(null); }} onInterest={() => { if (marketingBanner.linkedBusinessId) { const biz = businesses.find(b => b.id === marketingBanner.linkedBusinessId); if (biz) setViewedBusiness(biz); } setMarketingBanner(null); }} />}
@@ -456,9 +534,6 @@ export const App = () => {
       />
       
       {/* BANNER MANAGER POP-UPS & HEADER INJECTIONS */}
-      {/* 1. Global/Sector Banners in Home Header (Static/Slider) */}
-      
-      {/* 2. Persistent Popups (Business Campaigns + Sticky) */}
       <BannerManager 
         banners={banners} 
         businesses={businesses} 
@@ -468,7 +543,6 @@ export const App = () => {
         onSelectSector={(id) => setActiveSector(id)}
       />
       
-      {/* UPDATED: Pass location and business data to NotificationCenter for geofencing */}
       <NotificationCenter 
         isOpen={isNotifCenterOpen} 
         onClose={() => setIsNotifCenterOpen(false)} 

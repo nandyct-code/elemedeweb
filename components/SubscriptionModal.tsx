@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Business, UserAccount, SubscriptionFormData, CountryConfig, SystemFinancialConfig, Invoice, AddressDetails, DiscountCode, CouponTarget, SubscriptionPack } from '../types';
-import { SECTORS, LEGAL_TEXTS, MOCK_DISCOUNT_CODES } from '../constants';
+import { SECTORS, LEGAL_TEXTS } from '../constants';
 import { Eye, EyeOff, Loader2, CreditCard } from 'lucide-react';
 import { sendNotification } from '../services/notificationService';
 import { stripeService } from '../services/stripeService';
+import { dataService } from '../services/supabase'; // PHASE 1: ASYNC VALIDATION
 
 interface SubscriptionModalProps {
   isOpen: boolean;
@@ -48,6 +49,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<DiscountCode | null>(null);
   const [couponError, setCouponError] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
   const [cardDetails, setCardDetails] = useState({
     number: '',
@@ -100,37 +102,51 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       }
   };
 
-  // Coupon Validation
-  const validateCoupon = () => {
+  // Coupon Validation (Updated for Phase 1 Async)
+  const validateCoupon = async () => {
       setCouponError('');
       if (!couponCode.trim()) return;
+      setIsValidatingCoupon(true);
 
       const code = couponCode.toUpperCase().trim();
-      const found = MOCK_DISCOUNT_CODES.find(c => c.code === code && c.status === 'active');
+      
+      try {
+          // PHASE 1: Fetch coupons from DataService
+          const coupons = await dataService.getCoupons();
+          const found = coupons.find((c: DiscountCode) => c.code === code && c.status === 'active');
 
-      if (!found) {
-          setCouponError('Cupón inválido o expirado.');
-          return;
+          if (!found) {
+              setCouponError('Cupón inválido o expirado.');
+              setIsValidatingCoupon(false);
+              return;
+          }
+
+          if (new Date(found.valid_to || '') < new Date()) {
+              setCouponError('El cupón ha caducado.');
+              setIsValidatingCoupon(false);
+              return;
+          }
+
+          if ((found.usage_count || 0) >= (found.usage_limit || 0)) {
+              setCouponError('El cupón ha agotado sus usos.');
+              setIsValidatingCoupon(false);
+              return;
+          }
+
+          const isApplicable = found.applicable_targets?.includes('plan_subscription') || (!found.applicable_targets);
+          if (!isApplicable) {
+              setCouponError('Este cupón no es válido para suscripciones de planes.');
+              setIsValidatingCoupon(false);
+              return;
+          }
+
+          setAppliedCoupon(found);
+          setCouponError(''); 
+      } catch (e) {
+          setCouponError("Error validando cupón");
+      } finally {
+          setIsValidatingCoupon(false);
       }
-
-      if (new Date(found.valid_to || '') < new Date()) {
-          setCouponError('El cupón ha caducado.');
-          return;
-      }
-
-      if ((found.usage_count || 0) >= (found.usage_limit || 0)) {
-          setCouponError('El cupón ha agotado sus usos.');
-          return;
-      }
-
-      const isApplicable = found.applicable_targets?.includes('plan_subscription') || (!found.applicable_targets);
-      if (!isApplicable) {
-          setCouponError('Este cupón no es válido para suscripciones de planes.');
-          return;
-      }
-
-      setAppliedCoupon(found);
-      setCouponError(''); 
   };
 
   const calculateFinancials = () => {
@@ -196,7 +212,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     try {
         const { base, tax, total } = calculateFinancials();
         
-        // 1. Create Stripe Customer & Validate Card (Simulated)
+        // 1. Create Stripe Customer & Validate Card (Simulated via Service)
         const stripeCustomer = await stripeService.createCustomer(formData.email, formData.nombre, cardDetails);
         
         // 2. Process First Payment (Simulated)
@@ -630,12 +646,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                 placeholder="CÓDIGO PROMO"
                                 value={couponCode}
                                 onChange={(e) => setCouponCode(e.target.value)}
-                                disabled={!!appliedCoupon}
+                                disabled={!!appliedCoupon || isValidatingCoupon}
                             />
                             {appliedCoupon ? (
                                 <button onClick={() => { setAppliedCoupon(null); setCouponCode(''); }} className="bg-red-50 text-red-500 px-3 rounded-lg text-xs font-bold border border-red-100">✕</button>
                             ) : (
-                                <button onClick={validateCoupon} className="bg-gray-900 text-white px-3 rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors">Aplicar</button>
+                                <button onClick={validateCoupon} disabled={isValidatingCoupon} className="bg-gray-900 text-white px-3 rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors disabled:opacity-50">
+                                    {isValidatingCoupon ? <Loader2 className="animate-spin w-3 h-3" /> : 'Aplicar'}
+                                </button>
                             )}
                         </div>
                         {couponError && <p className="text-[10px] text-red-500 font-bold mt-1">{couponError}</p>}
