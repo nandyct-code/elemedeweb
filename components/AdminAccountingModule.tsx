@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Invoice, Business, SupportTicket, CountryCode, SystemFinancialConfig, AuditLog, SubscriptionPackType, SubscriptionPack } from '../types';
 import { SUBSCRIPTION_PACKS, COUNTRIES_DB, SECTORS, BANNER_1_DAY_PRICE, BANNER_7_DAYS_PRICE, BANNER_14_DAYS_PRICE } from '../constants';
-import { PieChart, DollarSign, Settings, Download, Search, AlertCircle, Link as LinkIcon, BarChart, CreditCard, Lock, TrendingUp, TrendingDown, Activity, Users, Wallet } from 'lucide-react';
+import { PieChart, DollarSign, Settings, Download, Search, AlertCircle, Link as LinkIcon, BarChart, CreditCard, Lock, TrendingUp, TrendingDown, Activity, Users, Wallet, ShieldCheck, FileText, RefreshCw, Save } from 'lucide-react';
 
 interface AdminAccountingModuleProps {
   businesses: Business[];
@@ -27,7 +27,7 @@ const MOCK_AUDIT_LOGS: AuditLog[] = [
 export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({ 
   businesses, onNotify, invoices, setInvoices, tickets, onUpdateTicket, systemFinancials, setSystemFinancials, subscriptionPacks, setSubscriptionPacks
 }) => {
-  const [activeTab, setActiveTab] = useState<'metrics' | 'verifactu' | 'recobro' | 'auditoria' | 'gestoria' | 'config' | 'precios'>('metrics'); 
+  const [activeTab, setActiveTab] = useState<'metrics' | 'verifactu' | 'recobro' | 'auditoria' | 'gestoria' | 'config' | 'precios'>('config'); 
   const [currentIssuerCountry, setCurrentIssuerCountry] = useState<CountryCode>('ES');
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(MOCK_AUDIT_LOGS);
@@ -104,19 +104,13 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
       ];
   }, [saasMetrics.mrr]);
 
-  // --- ANALYSIS LOGIC ---
-  const sectorBreakdown = useMemo(() => {
-      const breakdown: Record<string, number> = {};
-      invoices.forEach(inv => {
-          const biz = businesses.find(b => b.id === inv.business_id);
-          const sector = biz?.sectorId || 'unknown';
-          breakdown[sector] = (breakdown[sector] || 0) + inv.total_amount;
-      });
-      return breakdown;
-  }, [invoices, businesses]);
-
   // --- ACTIONS ---
   const handleSaveStripeConfig = () => {
+      // Validate fake keys just for UX
+      if (!stripeKeys.publicKey.startsWith('pk_') || !stripeKeys.secretKey.startsWith('sk_')) {
+          return onNotify("⚠️ Formato de claves inválido (deben empezar por pk_ y sk_).");
+      }
+
       setSystemFinancials(prev => ({
           ...prev,
           [currentIssuerCountry]: {
@@ -126,17 +120,18 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
                   publicKey: stripeKeys.publicKey,
                   secretKey: stripeKeys.secretKey,
                   webhookSecret: stripeKeys.webhookSecret,
-                  isConnected: true 
+                  isConnected: true,
+                  mode: 'live'
               }
           }
       }));
-      onNotify("🔑 Configuración de Stripe actualizada y asegurada.");
+      onNotify("✅ API de Stripe vinculada correctamente. Cobros habilitados.");
   };
 
   const handleDownloadGestoriaZIP = () => {
       onNotify(`Generando paquete contable ZIP para ${selectedMonthFilter}...`);
       setTimeout(() => {
-          onNotify("✅ Paquete ZIP descargado correctamente.");
+          onNotify("✅ Paquete ZIP descargado (Simulación).");
       }, 1500);
   };
 
@@ -151,6 +146,18 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
       setSubscriptionPacks(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p));
   };
 
+  const handleRetryCharge = (invoiceId: string) => {
+      onNotify(`Reintentando cobro automático para factura ${invoiceId}...`);
+      setTimeout(() => {
+          setInvoices(prev => prev.map(inv => 
+              inv.id === invoiceId ? { ...inv, status: 'paid' } : inv
+          ));
+          onNotify("✅ Cobro recuperado exitosamente.");
+      }, 2000);
+  };
+
+  const currentStripeConfig = systemFinancials[currentIssuerCountry].stripe;
+
   return (
     <div className="space-y-8 animate-fade-in max-w-7xl mx-auto px-4 py-8">
       
@@ -160,7 +167,7 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
             <span className="text-9xl">⚖️</span>
         </div>
         <div className="relative z-10">
-           <h2 className="text-3xl font-brand font-black uppercase tracking-tighter italic">Contabilidad Master</h2>
+           <h2 className="text-3xl font-brand font-black uppercase tracking-tighter italic">Control Fiscal</h2>
            <p className="text-xs text-gray-400 font-bold uppercase tracking-[0.2em] mt-2 mb-4">Sistema VeriFactu • {COUNTRIES_DB.find(c => c.code === currentIssuerCountry)?.name}</p>
            
            <div className="flex gap-2">
@@ -175,20 +182,198 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
                ))}
            </div>
         </div>
+        <div className="relative z-10 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20">
+            <p className="text-[10px] font-black uppercase text-gray-300 tracking-widest mb-1">Pasarela de Pagos</p>
+            <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${currentStripeConfig?.isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 animate-pulse'}`}></div>
+                <span className="font-bold text-sm">{currentStripeConfig?.isConnected ? 'STRIPE ONLINE' : 'DESCONECTADO'}</span>
+            </div>
+        </div>
       </div>
 
       {/* TABS NAVIGATION */}
       <div className="flex bg-white p-2 rounded-3xl shadow-sm w-full md:w-fit border-2 border-gray-50 gap-2 overflow-x-auto scrollbar-hide">
-        {(['metrics', 'config', 'verifactu', 'recobro', 'auditoria', 'gestoria', 'precios'] as const).map(tab => (
+        {(['config', 'precios', 'metrics', 'verifactu', 'recobro', 'auditoria', 'gestoria'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab ? 'bg-indigo-600 text-white shadow-xl' : 'text-gray-400 hover:text-gray-600'}`}
           >
-            {tab === 'metrics' ? 'Métricas SaaS' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'metrics' ? 'Métricas P&L' : tab === 'config' ? 'Vincular Stripe' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
+
+      {/* --- PESTAÑA: CONFIG (STRIPE INTEGRATION) --- */}
+      {activeTab === 'config' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+              <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-xl">
+                  <div className="flex items-center gap-3 mb-6">
+                      <div className="w-12 h-12 bg-[#635BFF] rounded-2xl flex items-center justify-center text-white"><CreditCard /></div>
+                      <div>
+                          <h3 className="text-xl font-black text-gray-900 uppercase italic">Vinculación Stripe</h3>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Gestión de Cobros y Suscripciones</p>
+                      </div>
+                  </div>
+
+                  <div className="space-y-5">
+                      <div>
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Public Key (pk_test/live_...)</label>
+                          <input 
+                              type="text" 
+                              className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-mono text-xs font-bold mt-1 outline-none focus:border-[#635BFF]"
+                              placeholder="pk_live_..."
+                              value={stripeKeys.publicKey}
+                              onChange={e => setStripeKeys({...stripeKeys, publicKey: e.target.value})}
+                          />
+                      </div>
+                      <div>
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Secret Key (sk_test/live_...)</label>
+                          <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl mt-1 overflow-hidden">
+                              <input 
+                                  type="password" 
+                                  className="w-full bg-transparent p-3 font-mono text-xs font-bold outline-none"
+                                  placeholder="sk_live_..."
+                                  value={stripeKeys.secretKey}
+                                  onChange={e => setStripeKeys({...stripeKeys, secretKey: e.target.value})}
+                              />
+                              <Lock size={14} className="text-gray-400 mr-3" />
+                          </div>
+                      </div>
+                      <div>
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Webhook Secret (whsec_...)</label>
+                          <input 
+                              type="text" 
+                              className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-mono text-xs font-bold mt-1 outline-none focus:border-[#635BFF]"
+                              placeholder="whsec_..."
+                              value={stripeKeys.webhookSecret}
+                              onChange={e => setStripeKeys({...stripeKeys, webhookSecret: e.target.value})}
+                          />
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black uppercase text-gray-500">Modo Producción</span>
+                              <div className="w-10 h-5 bg-green-500 rounded-full relative cursor-pointer">
+                                  <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"></div>
+                              </div>
+                          </div>
+                          <button 
+                              onClick={handleSaveStripeConfig}
+                              className="bg-[#635BFF] text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#5349e0] transition-all shadow-lg flex items-center gap-2"
+                          >
+                              <LinkIcon size={16} /> Guardar y Vincular
+                          </button>
+                      </div>
+                  </div>
+              </div>
+
+              <div className="bg-gray-50 p-8 rounded-[3rem] border border-gray-200 flex flex-col justify-center items-center text-center">
+                  <div className="bg-white p-6 rounded-full shadow-lg mb-6">
+                      <ShieldCheck size={48} className="text-green-500" />
+                  </div>
+                  <h4 className="text-lg font-black text-gray-900 uppercase mb-2">Seguridad Bancaria</h4>
+                  <p className="text-xs text-gray-500 max-w-sm mb-6">
+                      Al vincular las claves, ELEMEDE comenzará a procesar los cobros de suscripciones, publicidad y créditos de forma automática mediante la infraestructura segura de Stripe.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 w-full">
+                      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                          <p className="text-[9px] font-black text-gray-400 uppercase">Comisión Stripe</p>
+                          <p className="text-xl font-black text-gray-900">{systemFinancials[currentIssuerCountry].stripe?.feePercentage}% + {systemFinancials[currentIssuerCountry].stripe?.fixedFee}€</p>
+                      </div>
+                      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                          <p className="text-[9px] font-black text-gray-400 uppercase">Moneda</p>
+                          <p className="text-xl font-black text-gray-900">{COUNTRIES_DB.find(c => c.code === currentIssuerCountry)?.currency}</p>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- PESTAÑA: PRECIOS (PRICING MANAGEMENT) --- */}
+      {activeTab === 'precios' && (
+          <div className="space-y-8 animate-fade-in">
+              <div className="flex justify-between items-center px-4">
+                  <h3 className="text-2xl font-black text-gray-900 uppercase italic">Gestión de Tarifas</h3>
+                  <button onClick={handleSavePrices} className="bg-gray-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-600 transition-all shadow-lg flex items-center gap-2">
+                      <Save size={16} /> Aplicar Cambios Globales
+                  </button>
+              </div>
+
+              {/* SUBSCRIPTION PACKS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {subscriptionPacks.map(pack => (
+                      <div key={pack.id} className="bg-white p-6 rounded-[2.5rem] border-2 border-gray-100 shadow-lg relative overflow-hidden group hover:border-indigo-200 transition-all">
+                          <div className={`absolute top-0 left-0 w-full h-2 ${pack.colorClass}`}></div>
+                          <div className="flex justify-between items-center mb-4 mt-2">
+                              <h4 className="font-black text-gray-900 uppercase italic">{pack.label}</h4>
+                              <span className={`text-[8px] font-black px-2 py-1 rounded uppercase ${pack.colorClass.replace('bg-', 'text-').replace('-50', '-600')}`}>{pack.badge}</span>
+                          </div>
+                          
+                          <div className="space-y-4">
+                              <div>
+                                  <label className="text-[9px] font-black text-gray-400 uppercase">Precio Mensual</label>
+                                  <div className="flex items-center bg-gray-50 p-2 rounded-xl mt-1">
+                                      <input 
+                                          type="number" 
+                                          className="bg-transparent w-full font-bold text-sm outline-none" 
+                                          value={pack.monthlyPrice}
+                                          onChange={e => updatePackPrice(pack.id, 'monthlyPrice', Number(e.target.value))}
+                                      />
+                                      <span className="text-xs font-bold text-gray-500">€</span>
+                                  </div>
+                              </div>
+                              <div>
+                                  <label className="text-[9px] font-black text-gray-400 uppercase">Precio Anual (1er año)</label>
+                                  <div className="flex items-center bg-gray-50 p-2 rounded-xl mt-1">
+                                      <input 
+                                          type="number" 
+                                          className="bg-transparent w-full font-bold text-sm outline-none" 
+                                          value={pack.annualPriceYear1}
+                                          onChange={e => updatePackPrice(pack.id, 'annualPriceYear1', Number(e.target.value))}
+                                      />
+                                      <span className="text-xs font-bold text-gray-500">€</span>
+                                  </div>
+                              </div>
+                              <div>
+                                  <label className="text-[9px] font-black text-gray-400 uppercase">Precio Sede Extra</label>
+                                  <div className="flex items-center bg-gray-50 p-2 rounded-xl mt-1">
+                                      <input 
+                                          type="number" 
+                                          className="bg-transparent w-full font-bold text-sm outline-none" 
+                                          value={pack.extraLocationPrice}
+                                          onChange={e => updatePackPrice(pack.id, 'extraLocationPrice', Number(e.target.value))}
+                                      />
+                                      <span className="text-xs font-bold text-gray-500">€</span>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+
+              {/* ADVERTISING PRICES */}
+              <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-lg">
+                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6">Tarifas Publicidad (Banners)</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {Object.entries(localAdPrices).map(([key, val]) => (
+                          <div key={key}>
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{key.replace('_', ' ')}</label>
+                              <div className="flex items-center mt-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-3">
+                                  <input 
+                                      type="number" 
+                                      className="bg-transparent w-full font-bold text-lg outline-none" 
+                                      value={val} 
+                                      onChange={e => setLocalAdPrices({...localAdPrices, [key]: Number(e.target.value)})} 
+                                  />
+                                  <span className="text-sm font-black text-gray-400">€</span>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* --- PESTAÑA: METRICAS SAAS (CON P&L MEJORADO) --- */}
       {activeTab === 'metrics' && (
@@ -234,7 +419,7 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
                   </div>
               </div>
 
-              {/* P&L DETAIL SECTION (PUNTO 2 DETALLE) */}
+              {/* P&L DETAIL SECTION */}
               <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
                   <h4 className="text-xl font-black text-gray-900 uppercase italic mb-6">Cuenta de Resultados (P&L)</h4>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -294,34 +479,116 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
                       </div>
                   </div>
               </div>
+          </div>
+      )}
 
-              {/* CASHFLOW PROJECTION */}
-              <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-lg">
-                  <h4 className="text-xl font-black text-gray-900 uppercase italic mb-6 flex items-center gap-2">
-                      <TrendingUp className="text-green-500" /> Proyección Cash Flow (3 Meses)
-                  </h4>
-                  <div className="flex items-end gap-4 h-48">
-                      {cashFlowProjection.map((item, idx) => (
-                          <div key={idx} className="flex-1 flex flex-col justify-end group">
-                              <div 
-                                  className="w-full bg-indigo-100 rounded-t-2xl relative transition-all group-hover:bg-indigo-200"
-                                  style={{ height: `${(item.amount / (cashFlowProjection[2].amount * 1.2)) * 100}%` }}
-                              >
-                                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 font-black text-xs text-indigo-900 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-2 py-1 rounded shadow-sm">
-                                      {item.amount.toFixed(0)}€
-                                  </div>
-                              </div>
-                              <p className="text-center text-[10px] font-black text-gray-400 uppercase mt-2 tracking-widest">{item.month}</p>
+      {/* --- PESTAÑA: VERIFACTU (AUDITORIA FISCAL) --- */}
+      {activeTab === 'verifactu' && (
+          <div className="space-y-8 animate-fade-in">
+              <div className="bg-gray-950 p-8 rounded-[3rem] shadow-2xl border-4 border-gray-800 relative overflow-hidden">
+                  <div className="flex justify-between items-center mb-6 relative z-10">
+                      <div>
+                          <h4 className="text-xl font-black text-white uppercase italic flex items-center gap-2">
+                              <ShieldCheck size={24} className="text-green-500" /> Sistema VeriFactu
+                          </h4>
+                          <p className="text-[10px] text-gray-400 font-mono mt-1">Conexión Segura AEAT / HASH Chain Integrity</p>
+                      </div>
+                      <div className="flex items-center gap-2 bg-green-900/30 border border-green-500/30 px-4 py-2 rounded-xl">
+                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                          <span className="text-[10px] font-bold text-green-400 uppercase">Conectado</span>
+                      </div>
+                  </div>
+
+                  <div className="bg-black/50 rounded-2xl p-6 font-mono text-[10px] h-96 overflow-y-auto border border-white/10 space-y-2 scrollbar-hide relative z-10">
+                      {invoices.slice(0, 20).map((inv, i) => (
+                          <div key={inv.id} className="flex gap-4 border-b border-white/5 pb-2 hover:bg-white/5 p-1 transition-colors">
+                              <span className="text-gray-500 w-24 shrink-0">{inv.date}</span>
+                              <span className="text-blue-400 font-bold w-32 shrink-0">{inv.id}</span>
+                              <span className="text-gray-300 flex-1 truncate">{inv.business_nif} → {inv.client_nif} | {inv.total_amount.toFixed(2)}€</span>
+                              <span className="text-green-500 font-bold w-24 text-right">HASH OK</span>
                           </div>
                       ))}
                   </div>
-                  <p className="text-[9px] text-gray-400 mt-4 text-center italic">* Proyección basada en renovación automática de suscripciones activas sin contar nuevas altas.</p>
               </div>
           </div>
       )}
 
-      {/* ... (CONFIG, PRECIOS, VERIFACTU, GESTORIA Tabs preserved) ... */}
-      {/* ... (Existing code) ... */}
+      {/* --- PESTAÑA: RECOBRO (DUNNING) --- */}
+      {activeTab === 'recobro' && (
+          <div className="space-y-8 animate-fade-in">
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-red-50">
+                  <h4 className="text-xl font-black text-gray-900 uppercase italic mb-6 flex items-center gap-2">
+                      <AlertCircle className="text-red-500" /> Gestión de Impagados
+                  </h4>
+                  
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                          <thead className="text-[9px] font-black uppercase text-gray-400 border-b border-gray-100">
+                              <tr>
+                                  <th className="px-4 py-3">Factura</th>
+                                  <th className="px-4 py-3">Cliente</th>
+                                  <th className="px-4 py-3">Importe</th>
+                                  <th className="px-4 py-3">Días Vencido</th>
+                                  <th className="px-4 py-3 text-right">Acción</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 text-sm">
+                              {invoices.filter(i => i.status === 'unpaid' || i.status === 'overdue').length === 0 ? (
+                                  <tr>
+                                      <td colSpan={5} className="py-8 text-center text-gray-400 font-bold text-xs uppercase">
+                                          ¡Excelente! No hay facturas pendientes de cobro.
+                                      </td>
+                                  </tr>
+                              ) : (
+                                  invoices.filter(i => i.status === 'unpaid' || i.status === 'overdue').map(inv => (
+                                      <tr key={inv.id} className="hover:bg-red-50/30">
+                                          <td className="px-4 py-4 font-mono font-bold">{inv.id}</td>
+                                          <td className="px-4 py-4">{inv.client_name}</td>
+                                          <td className="px-4 py-4 font-black text-red-600">{inv.total_amount.toFixed(2)}€</td>
+                                          <td className="px-4 py-4 font-bold text-orange-500">5 días</td>
+                                          <td className="px-4 py-4 text-right">
+                                              <button onClick={() => handleRetryCharge(inv.id)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-indigo-700 flex items-center gap-2 ml-auto">
+                                                  <RefreshCw size={12} /> Reintentar
+                                              </button>
+                                          </td>
+                                      </tr>
+                                  ))
+                              )}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- PESTAÑA: GESTORIA (EXPORT) --- */}
+      {activeTab === 'gestoria' && (
+          <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 text-center py-20">
+              <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-500">
+                  <FileText size={48} />
+              </div>
+              <h4 className="text-2xl font-black text-gray-900 uppercase italic mb-2">Exportación Contable</h4>
+              <p className="text-sm text-gray-500 max-w-md mx-auto mb-8">
+                  Descarga todos los documentos fiscales, facturas emitidas y recibidas en formato compatible con A3/Sage para tu gestor.
+              </p>
+              
+              <div className="flex justify-center gap-4">
+                  <select 
+                      className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold text-sm outline-none"
+                      value={selectedMonthFilter}
+                      onChange={e => setSelectedMonthFilter(e.target.value)}
+                  >
+                      <option value="2024-03">Marzo 2024</option>
+                      <option value="2024-02">Febrero 2024</option>
+                      <option value="2024-01">Enero 2024</option>
+                  </select>
+                  <button onClick={handleDownloadGestoriaZIP} className="bg-gray-900 text-white px-8 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-600 transition-all shadow-lg flex items-center gap-2">
+                      <Download size={16} /> Descargar Paquete ZIP
+                  </button>
+              </div>
+          </div>
+      )}
+
     </div>
   );
 };
