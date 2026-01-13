@@ -81,7 +81,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
             // SIGNUP FLOW
             // Check if user exists (Simple check, real backend would handle this)
             const allUsers = await dataService.getUsers();
-            if (allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase())) {
+            if (allUsers.find(any => any.email.toLowerCase() === formData.email.toLowerCase())) {
                 setErrorMsg("Este email ya está registrado.");
                 setIsSubmitting(null);
                 return;
