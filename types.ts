@@ -230,6 +230,7 @@ export interface BusinessStory {
   expiresAt: string;
   type: 'fresh_batch' | 'promo';
   imageUrl?: string;
+  mediaType?: 'image' | 'video'; // NEW FIELD FOR SWEET REELS
   text: string;
 }
 
@@ -261,6 +262,16 @@ export interface Lead {
   clientName: string;
   clientContact: string; // Hidden until unlocked
   createdAt: string;
+}
+
+// --- NEW INTELLIGENCE TYPES ---
+export interface DemandZone {
+  id: string;
+  name: string;
+  demandScore: number; // 0-100 (Searches)
+  supplyCount: number; // Number of businesses
+  opportunityLevel: 'low' | 'medium' | 'high' | 'critical';
+  topSearchTerms: string[];
 }
 
 export interface Business {
@@ -306,6 +317,7 @@ export interface Business {
   aiCredits?: number; // Marketing AI Credits
   openingHours?: Record<string, OpeningHours>; 
   unlockedLeads?: string[]; // IDs of leads unlocked by this business
+  battleWins?: number; // Gamification wins
 }
 
 export interface SupportTicket {

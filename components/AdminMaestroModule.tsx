@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { UserAccount, Business, UserStatus, UserRole, SubscriptionPackType, SupportTicket, CountryCode, ForumQuestion, SystemFinancialConfig, GovernanceRule, AutoPilotConfig, SecurityLog } from '../types';
 import { SECTORS, SUBSCRIPTION_PACKS, COUNTRIES_DB, INITIAL_SYSTEM_FINANCIALS } from '../constants';
-import { Activity, Shield, Zap, TrendingUp, AlertTriangle, Users, Settings, Database, MessageCircle, BarChart3, Lock, Wifi, Server, Mail, Brain, HardDrive, RefreshCw, Eye, Camera, Check, X, Edit, Globe, Link, RefreshCcw } from 'lucide-react';
+import { Activity, Shield, Zap, TrendingUp, AlertTriangle, Users, Settings, Database, MessageCircle, BarChart3, Lock, Wifi, Server, Mail, Brain, HardDrive, RefreshCw, Eye, Camera, Check, X, Edit, Globe, Link, RefreshCcw, Cloud, CreditCard, Trash2, FileText } from 'lucide-react';
 
 interface AdminMaestroModuleProps {
   activeTab: 'usuarios' | 'negocios' | 'sistema' | 'soporte' | 'base_datos' | 'cerebro_ia' | 'moderacion';
@@ -32,6 +32,15 @@ const MOCK_SYSTEM_LOGS = [
     { time: '10:43:05', type: 'warning', msg: '[DENSITY] Zona Barcelona Centro saturada (85%). Pausando nuevos registros basic.' },
     { time: '10:44:20', type: 'info', msg: '[SEO-BOT] 45 landings generadas automáticamente para "Tartas Veganas".' },
     { time: '10:45:00', type: 'success', msg: '[BILLING] Ciclo de facturación automático completado sin errores.' }
+];
+
+// MOCK SECURITY AUDIT LOGS (PUNTO 3)
+const MOCK_SECURITY_AUDIT: SecurityLog[] = [
+    { id: 'sec_1', timestamp: '2024-03-20 10:30:05', ip: '192.168.1.55', action: 'LOGIN_ATTEMPT', reason: 'Fallo credenciales Admin Marketing', status: 'monitored' },
+    { id: 'sec_2', timestamp: '2024-03-20 10:35:12', ip: '80.50.20.10', action: 'DATA_EXPORT', reason: 'Descarga masiva de facturas (Admin Finanzas)', status: 'flagged' },
+    { id: 'sec_3', timestamp: '2024-03-20 11:00:00', ip: '10.0.0.1', action: 'SYSTEM_CONFIG', reason: 'Cambio tasa impuestos ES (Root)', status: 'monitored' },
+    { id: 'sec_4', timestamp: '2024-03-19 15:20:00', ip: '45.20.10.5', action: 'SUSPICIOUS_TRAFFIC', reason: 'Rate limit excedido en API Maps', status: 'blocked' },
+    { id: 'sec_5', timestamp: '2024-03-18 09:10:00', ip: '192.168.1.100', action: 'USER_BAN', reason: 'Ban manual usuario ID: u_555 (Admin Soporte)', status: 'monitored' }
 ];
 
 export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
@@ -70,6 +79,10 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [aiAnalysisLogs, setAiAnalysisLogs] = useState<{timestamp: string, category: string, detail: string, status: 'success' | 'warning' | 'alert'}[]>([]);
 
+  // SYSTEM HEALTH STATE
+  const [apiHealth, setApiHealth] = useState({ maps: 'healthy', gemini: 'healthy', stripe: 'healthy' });
+  const [apiQuotas, setApiQuotas] = useState({ maps: 65, gemini: 30, db: 45 }); // Percentages
+
   // MOCK MODERATION QUEUE (Simulating pending images)
   const moderationQueue = useMemo(() => {
       return businesses.slice(0, 3).map((b, idx) => ({
@@ -83,6 +96,14 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
   }, [businesses]);
 
   const [localModerationQueue, setLocalModerationQueue] = useState(moderationQueue);
+
+  // ZOMBIE CLEANER CALC
+  const zombieCount = useMemo(() => {
+      return users.filter(u => {
+          // Assume fake dates for demo or use logic
+          return u.status === 'suspended' || !u.last_login;
+      }).length;
+  }, [users]);
 
   // --- LOGIC HELPERS ---
   const handleAddBannedWord = () => {
@@ -107,6 +128,12 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           setIsProcessingAI(false);
           onNotify("Ciclo Maestro Completado.");
       }, 1500);
+  };
+
+  const handleCleanZombies = () => {
+      if(confirm(`¿Eliminar ${zombieCount} cuentas inactivas permanentemente?`)) {
+          onNotify("Limpieza programada en segundo plano...");
+      }
   };
 
   // --- FILTERS & MEMOS ---
@@ -269,7 +296,144 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {/* --- MODERATION QUEUE (TEXT & IMAGES) --- */}
+      {/* --- SISTEMA TAB (SERVER, CONFIG & AUDIT) --- */}
+      {internalTab === 'sistema' && (
+          <div className="space-y-8">
+              
+              {/* HEALTH MONITOR */}
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6 flex items-center gap-2"><Activity size={20} className="text-green-500" /> Monitor de Salud Técnica</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* API Status Cards */}
+                      {[
+                          { id: 'maps', label: 'Google Maps API', icon: <Globe size={20}/> },
+                          { id: 'gemini', label: 'Gemini AI', icon: <Brain size={20}/> },
+                          { id: 'stripe', label: 'Stripe Payments', icon: <CreditCard size={20}/> }
+                      ].map(api => (
+                          <div key={api.id} className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
+                              <div className="flex justify-between items-center mb-4">
+                                  <div className="flex items-center gap-2 text-gray-600">
+                                      {api.icon}
+                                      <span className="text-xs font-bold uppercase">{api.label}</span>
+                                  </div>
+                                  <div className={`w-3 h-3 rounded-full ${apiHealth[api.id as keyof typeof apiHealth] === 'healthy' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 animate-pulse'}`}></div>
+                              </div>
+                              <div>
+                                  <div className="flex justify-between text-[9px] font-black text-gray-400 uppercase mb-1">
+                                      <span>Cuota Mensual</span>
+                                      <span>{apiQuotas[api.id as keyof typeof apiQuotas]}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                      <div className={`h-full ${apiQuotas[api.id as keyof typeof apiQuotas] > 80 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${apiQuotas[api.id as keyof typeof apiQuotas]}%` }}></div>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+
+                  {/* ZOMBIE CLEANER */}
+                  <div className="mt-8 bg-gray-900 text-white p-6 rounded-2xl flex justify-between items-center">
+                      <div>
+                          <h5 className="font-bold text-sm mb-1">Cuentas Zombie Detectadas</h5>
+                          <p className="text-xs text-gray-400">Usuarios inactivos > 6 meses: <span className="text-orange-500 font-black">{zombieCount}</span></p>
+                      </div>
+                      <button onClick={handleCleanZombies} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+                          <Trash2 size={14} /> Ejecutar Limpieza
+                      </button>
+                  </div>
+              </div>
+
+              {/* SECURITY AUDIT TERMINAL (PUNTO 3) */}
+              <div className="bg-gray-950 p-8 rounded-[3rem] shadow-2xl border-4 border-gray-800 relative overflow-hidden">
+                  <div className="flex justify-between items-center mb-6">
+                      <h4 className="text-lg font-black text-white uppercase italic flex items-center gap-2">
+                          <FileText size={20} className="text-orange-500" /> Registro de Auditoría (Audit Log)
+                      </h4>
+                      <span className="bg-gray-800 text-gray-400 px-3 py-1 rounded text-[9px] font-mono">Live Monitoring</span>
+                  </div>
+                  
+                  <div className="bg-black/50 rounded-2xl p-4 font-mono text-[10px] h-64 overflow-y-auto border border-white/10 space-y-2 scrollbar-hide">
+                      <div className="grid grid-cols-12 text-gray-500 border-b border-white/10 pb-2 mb-2 uppercase font-bold">
+                          <div className="col-span-2">Timestamp</div>
+                          <div className="col-span-2">IP Addr</div>
+                          <div className="col-span-3">Acción</div>
+                          <div className="col-span-4">Detalle</div>
+                          <div className="col-span-1 text-right">Status</div>
+                      </div>
+                      {MOCK_SECURITY_AUDIT.map(log => (
+                          <div key={log.id} className="grid grid-cols-12 text-gray-300 hover:bg-white/5 p-1 rounded transition-colors">
+                              <div className="col-span-2 text-gray-500">{log.timestamp.split(' ')[1]}</div>
+                              <div className="col-span-2 text-blue-400">{log.ip}</div>
+                              <div className="col-span-3 font-bold text-orange-400">{log.action}</div>
+                              <div className="col-span-4 truncate text-gray-400" title={log.reason}>{log.reason}</div>
+                              <div className={`col-span-1 text-right font-bold uppercase ${log.status === 'blocked' ? 'text-red-500' : log.status === 'flagged' ? 'text-yellow-500' : 'text-green-500'}`}>
+                                  {log.status}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+
+              {/* Infrastructure Control */}
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6 flex items-center gap-2"><Server size={20} /> Infraestructura & Dominios</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dominio Principal</label>
+                          <div className="flex items-center gap-2 mt-1">
+                              <Globe className="text-gray-400" size={16} />
+                              <input 
+                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs" 
+                                  value={serverConfig.domain}
+                                  onChange={e => setServerConfig({...serverConfig, domain: e.target.value})}
+                              />
+                          </div>
+                      </div>
+                      <div>
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">IP Servidor Maestro</label>
+                          <div className="flex items-center gap-2 mt-1">
+                              <HardDrive className="text-gray-400" size={16} />
+                              <input 
+                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs" 
+                                  value={serverConfig.serverIp}
+                                  onChange={e => setServerConfig({...serverConfig, serverIp: e.target.value})}
+                              />
+                          </div>
+                      </div>
+                  </div>
+                  <div className="mt-6 flex justify-end">
+                      <button className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 transition-colors shadow-lg">Guardar Configuración de Red</button>
+                  </div>
+              </div>
+
+              {/* Maintenance Control */}
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex justify-between items-center">
+                  <div>
+                      <h4 className="text-lg font-black text-gray-900 uppercase italic">Modo Mantenimiento</h4>
+                      <p className="text-xs text-gray-500 font-bold mt-1">Bloquea el acceso a usuarios no administradores.</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                      {maintenanceMode && <span className="text-red-500 font-black text-xs uppercase animate-pulse">ACTIVO</span>}
+                      <button 
+                          onClick={() => onToggleMaintenance && onToggleMaintenance(!maintenanceMode)} 
+                          className={`w-14 h-8 rounded-full relative transition-colors ${maintenanceMode ? 'bg-red-500' : 'bg-gray-200'}`}
+                      >
+                          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${maintenanceMode ? 'left-7' : 'left-1'}`}></div>
+                      </button>
+                  </div>
+              </div>
+              
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6">Reiniciar Servicios</h4>
+                  <button onClick={handleRestartServers} className="w-full bg-gray-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 transition-all flex justify-center items-center gap-2">
+                      <RefreshCw size={16} className="animate-spin-slow" /> Reiniciar Instancias de Servidor
+                  </button>
+              </div>
+          </div>
+      )}
+
+      {/* ... (MODERATION, SOPORTE, NEGOCIOS, USUARIOS tabs preserved) ... */}
       {internalTab === 'moderacion' && (
           <div className="space-y-8">
               {/* BANNED WORDS */}
@@ -342,68 +506,6 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {/* --- SISTEMA TAB (SERVER & CONFIG) --- */}
-      {internalTab === 'sistema' && (
-          <div className="space-y-8">
-              {/* Infrastructure Control */}
-              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
-                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6 flex items-center gap-2"><Server size={20} /> Infraestructura & Dominios</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dominio Principal</label>
-                          <div className="flex items-center gap-2 mt-1">
-                              <Globe className="text-gray-400" size={16} />
-                              <input 
-                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs" 
-                                  value={serverConfig.domain}
-                                  onChange={e => setServerConfig({...serverConfig, domain: e.target.value})}
-                              />
-                          </div>
-                      </div>
-                      <div>
-                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">IP Servidor Maestro</label>
-                          <div className="flex items-center gap-2 mt-1">
-                              <HardDrive className="text-gray-400" size={16} />
-                              <input 
-                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs" 
-                                  value={serverConfig.serverIp}
-                                  onChange={e => setServerConfig({...serverConfig, serverIp: e.target.value})}
-                              />
-                          </div>
-                      </div>
-                  </div>
-                  <div className="mt-6 flex justify-end">
-                      <button className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 transition-colors shadow-lg">Guardar Configuración de Red</button>
-                  </div>
-              </div>
-
-              {/* Maintenance Control */}
-              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex justify-between items-center">
-                  <div>
-                      <h4 className="text-lg font-black text-gray-900 uppercase italic">Modo Mantenimiento</h4>
-                      <p className="text-xs text-gray-500 font-bold mt-1">Bloquea el acceso a usuarios no administradores.</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                      {maintenanceMode && <span className="text-red-500 font-black text-xs uppercase animate-pulse">ACTIVO</span>}
-                      <button 
-                          onClick={() => onToggleMaintenance && onToggleMaintenance(!maintenanceMode)} 
-                          className={`w-14 h-8 rounded-full relative transition-colors ${maintenanceMode ? 'bg-red-500' : 'bg-gray-200'}`}
-                      >
-                          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${maintenanceMode ? 'left-7' : 'left-1'}`}></div>
-                      </button>
-                  </div>
-              </div>
-              
-              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
-                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6">Reiniciar Servicios</h4>
-                  <button onClick={handleRestartServers} className="w-full bg-gray-900 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 transition-all flex justify-center items-center gap-2">
-                      <RefreshCw size={16} className="animate-spin-slow" /> Reiniciar Instancias de Servidor
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {/* --- SOPORTE ACTIVO TAB --- */}
       {internalTab === 'soporte' && (
           <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -431,7 +533,6 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {/* --- NEGOCIOS TAB (AI ENHANCED + TOTAL EDIT) --- */}
       {internalTab === 'negocios' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredBusinesses.map(biz => (
@@ -460,7 +561,6 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {/* --- USUARIOS TAB (ENHANCED WITH IMPERSONATION) --- */}
       {internalTab === 'usuarios' && (
         <div className="space-y-6">
             <div className="flex justify-between items-center">

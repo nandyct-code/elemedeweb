@@ -1,9 +1,15 @@
 
-import React, { useState, useRef, useMemo } from 'react';
-import { DiscountCode, Banner, Business, EmailTemplate, UserAccount, AdRequest, Invoice, SocialConfig, SupportTicket, SystemFinancialConfig, CouponTarget } from '../types';
-import { SECTORS, MOCK_EMAIL_TEMPLATES } from '../constants';
-import { getSectorImage } from '../services/geminiService';
+import React, { useState, useMemo } from 'react';
+import { DiscountCode, Banner, Business, EmailTemplate, UserAccount, AdRequest, Invoice, SocialConfig, SupportTicket, SystemFinancialConfig, DemandZone, CouponTarget } from '../types';
+import { MOCK_EMAIL_TEMPLATES, SECTORS } from '../constants';
 import { getNotificationLogs } from '../services/notificationService';
+import { 
+  Wand2, AlertOctagon, Settings, Tag, Mail, MessageSquare, 
+  TrendingUp, MousePointer, Heart, Smile, Meh, Frown, 
+  Euro, Sliders, ShieldAlert, Bot, Zap, Lock, BarChart3,
+  Plus, Trash2, Save, Send, Link as LinkIcon, Instagram, Facebook, Twitter, Youtube, Video,
+  Layout, Calendar, Megaphone, Sparkles, Target
+} from 'lucide-react';
 
 interface AdminMarketingModuleProps {
   onNotify: (msg: string) => void;
@@ -26,390 +32,192 @@ interface AdminMarketingModuleProps {
 export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({ 
   onNotify, businesses, onUpdateBusiness, users = [], banners, onUpdateBanners, coupons, setCoupons, invoices, setInvoices, socialLinks, setSocialLinks, tickets = [], onUpdateTicket, systemConfig
 }) => {
-  const [activeTab, setActiveTab] = useState<'cupones' | 'banners' | 'emails' | 'redes' | 'soporte' | 'vision_global'>('vision_global');
+  const [activeTab, setActiveTab] = useState<'vision_global' | 'ad_studio' | 'ad_control' | 'config' | 'cupones' | 'emails' | 'soporte'>('vision_global');
   
-  // EMAILS SUB-TABS & FILTERS
-  const [emailSubTab, setEmailSubTab] = useState<'plantillas' | 'redactar' | 'logs'>('plantillas');
-  const [emailFilterType, setEmailFilterType] = useState<string>('all');
-  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(MOCK_EMAIL_TEMPLATES);
-  const [notificationLogs, setNotificationLogs] = useState(getNotificationLogs());
+  // STUDIO STATE (ENHANCED)
+  const [studioMode, setStudioMode] = useState<'platform' | 'business'>('platform');
+  const [platformType, setPlatformType] = useState<'season' | 'boost'>('season');
+  const [seasonName, setSeasonName] = useState('');
+  const [targetSector, setTargetSector] = useState('');
+  const [isGeneratingCampaign, setIsGeneratingCampaign] = useState(false);
+  const [generatedPreview, setGeneratedPreview] = useState<any>(null);
 
-  // MODAL STATES
-  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
-  const [editingCoupon, setEditingCoupon] = useState<DiscountCode | null>(null);
-  
-  const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
-  const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
+  // SETTINGS STATE (MANUAL PARAMETERS)
+  const [configRates, setConfigRates] = useState({
+      day1: 9.90,
+      day7: 39.90,
+      day14: 69.90,
+      push: 1.21
+  });
+  const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState(80); 
+  const [saturationLimit, setSaturationLimit] = useState(3); 
 
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  // SETTINGS STATE (AI AUTOPILOT)
+  const [autoPilot, setAutoPilot] = useState({
+      autoCharge: false,
+      riskCeiling: 50,
+      aiSupport: true,
+      antiValley: false,
+      autoFill: true,
+      yieldStrategy: 'profit' 
+  });
 
-  // APPROVAL STAGING STATE
-  const [approvingAd, setApprovingAd] = useState<{
-      business: Business;
-      request: AdRequest;
-      draftBanner: Banner;
-      finalPrice: number;
-  } | null>(null);
+  // COUPON STATE
+  const [newCoupon, setNewCoupon] = useState<{code: string, value: number, type: 'porcentaje'|'fijo', target: CouponTarget}>({
+      code: '', value: 10, type: 'porcentaje', target: 'plan_subscription'
+  });
 
-  // SOCIAL STATE
-  const [tempSocialLinks, setTempSocialLinks] = useState<SocialConfig>(socialLinks || { instagram: '', facebook: '', tiktok: '', twitter: '', youtube: '' });
+  // SOCIAL STATE (Local state for editing)
+  const [localSocials, setLocalSocials] = useState<SocialConfig>(socialLinks || { instagram: '', facebook: '', tiktok: '', twitter: '', youtube: '' });
 
-  // COMPOSE EMAIL STATE
-  const [composeRecipient, setComposeRecipient] = useState('all_businesses');
-  const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
-
-  // BANNER SUB-TABS & LOGIC
-  const [bannerSubTab, setBannerSubTab] = useState<'campanas' | 'solicitudes'>('campanas');
-  
-  // --- FILTER IMPLEMENTATION ---
-  const [bannerTypeFilter, setBannerTypeFilter] = useState<'all' | 'platform' | 'business'>('all'); 
-  
-  const [imageInputMode, setImageInputMode] = useState<'url' | 'upload' | 'ai'>('url');
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // --- HELPERS ---
-  const marketingTickets = useMemo(() => tickets.filter(t => t.department === 'marketing'), [tickets]);
-
-  const pendingRequests = useMemo(() => {
-    return businesses.flatMap(b => 
-        (b.adRequests || [])
-            .filter(r => r.status === 'pending')
-            .map(r => ({ request: r, business: b }))
-    );
-  }, [businesses]);
-
-  const filteredEmailTemplates = useMemo(() => {
-      if (emailFilterType === 'all') return emailTemplates;
-      return emailTemplates.filter(t => t.type === emailFilterType);
-  }, [emailTemplates, emailFilterType]);
-
-  // --- FILTER LOGIC ---
-  const filteredBanners = useMemo(() => {
-      if (bannerTypeFilter === 'all') return banners;
-      if (bannerTypeFilter === 'platform') return banners.filter(b => b.type === 'sector_campaign');
-      if (bannerTypeFilter === 'business') return banners.filter(b => b.type === 'business_campaign');
-      return banners;
-  }, [banners, bannerTypeFilter]);
-
-  const handleResolveTicket = (id: string) => {
-    if (onUpdateTicket) {
-        onUpdateTicket(id, { status: 'resolved' });
-        onNotify('Ticket marcado como resuelto.');
-    }
-  };
-
-  // --- BANNER & AD REQUEST LOGIC ---
-  const initiateAdApproval = (biz: Business, request: AdRequest) => {
-      const today = new Date();
-      const endDate = new Date(today);
-      endDate.setDate(today.getDate() + request.durationDays);
-
-      const initialBanner: Banner = {
-          id: `ad_${request.id}`,
-          title: `Promo: ${biz.name}`,
-          imageUrl: biz.mainImage || 'https://via.placeholder.com/800x400?text=Publicidad',
-          position: 'popup', // DEFAULT TO POPUP/STICKY AS REQUESTED
-          format: 'sticky_bottom', // Explicit format for non-intrusive popup
-          type: 'business_campaign', 
-          subtype: 'featured',
-          visibility_rules: {
-              roles: ['user', 'guest', 'business_owner'],
-              plans: ['basic', 'medium', 'premium', 'super_top'],
-              devices: ['desktop', 'mobile']
-          },
-          start_date: today.toISOString().split('T')[0],
-          end_date: endDate.toISOString().split('T')[0],
-          status: 'active',
-          clicks: 0,
-          views: 0,
-          linkedBusinessId: biz.id,
-          targetingRadius: 20,
-          spawnType: request.type === '1_day' ? '1_day' : request.type === '7_days' ? '7_days' : '14_days',
-          frequencyCapPerUser: request.type === '1_day' ? 3 : 1
-      };
-
-      setApprovingAd({
-          business: biz,
-          request: request,
-          draftBanner: initialBanner,
-          finalPrice: request.price
+  // ROI METRICS
+  const roiMetrics = useMemo(() => {
+      const totalViews = banners.reduce((acc, b) => acc + (b.views || 0), 0);
+      const totalClicks = banners.reduce((acc, b) => acc + (b.clicks || 0), 0);
+      const ctr = totalViews > 0 ? (totalClicks / totalViews) * 100 : 0;
+      
+      let totalRatings = 0;
+      const sentiment = { positive: 0, neutral: 0, negative: 0 };
+      
+      businesses.forEach(b => {
+          if (b.ratings) {
+              b.ratings.forEach(r => {
+                  totalRatings++;
+                  if (r.stars >= 4) sentiment.positive++;
+                  else if (r.stars === 3) sentiment.neutral++;
+                  else sentiment.negative++;
+              });
+          }
       });
-      // Reset image input mode for the modal
-      setImageInputMode('url');
-  };
 
-  const confirmAdApproval = () => {
-    if (!approvingAd) return;
-
-    const { business, request, draftBanner, finalPrice } = approvingAd;
-    
-    // Determine Tax Rate from System Config or default to 21
-    const taxRate = systemConfig ? systemConfig.taxRate : 21;
-    
-    const baseAmount = finalPrice;
-    const ivaRate = taxRate; 
-    const ivaAmount = baseAmount * (ivaRate / 100);
-    const totalAmount = baseAmount + ivaAmount;
-
-    // 1. Generate Invoice (Stripe Charge Simulation) based on FINAL PRICE - INSTANT CHARGE
-    const newInvoice: Invoice = {
-        id: `INV-AD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        business_id: business.id,
-        business_name: 'ELEMEDE SL',
-        business_nif: 'B12345678',
-        client_name: business.name,
-        client_nif: business.nif,
-        date: new Date().toISOString().split('T')[0],
-        due_date: new Date().toISOString().split('T')[0],
-        base_amount: baseAmount,
-        iva_rate: ivaRate,
-        iva_amount: ivaAmount,
-        irpf_rate: 0,
-        irpf_amount: 0,
-        total_amount: totalAmount,
-        status: 'paid', // INSTANTLY PAID
-        concept: `Publicidad Flash: ${draftBanner.title} (${request.durationDays} días)`,
-        quarter: Math.floor(new Date().getMonth() / 3) + 1,
-        stripe_fee: (totalAmount * 0.015) + 0.25
-    };
-    setInvoices(prev => [newInvoice, ...prev]);
-
-    // 2. Create the Banner Object with MODIFIED details
-    onUpdateBanners(prev => [draftBanner, ...prev]);
-
-    // 3. Update Business Request Status
-    const updatedRequests = (business.adRequests || []).map(r => 
-        r.id === request.id ? { ...r, status: 'active', price: finalPrice } : r
-    );
-    onUpdateBusiness(business.id, { adRequests: updatedRequests as AdRequest[] });
-
-    onNotify(`✅ Cobro de ${totalAmount.toFixed(2)}€ realizado. Banner Pop-up Activo.`);
-    setApprovingAd(null);
-  };
-
-  const handleRejectAdRequest = (biz: Business, request: AdRequest) => {
-      if (confirm("¿Rechazar esta solicitud? No se realizará ningún cobro.")) {
-        const updatedRequests = (biz.adRequests || []).map(r => 
-            r.id === request.id ? { ...r, status: 'rejected' } : r
-        );
-        onUpdateBusiness(biz.id, { adRequests: updatedRequests as AdRequest[] });
-        onNotify("Solicitud rechazada.");
-      }
-  };
-
-  const handleSaveBanner = () => {
-    if (!editingBanner || !editingBanner.title) return;
-
-    if (banners.find(b => b.id === editingBanner.id)) {
-      onUpdateBanners(prev => prev.map(b => b.id === editingBanner.id ? editingBanner : b));
-      onNotify(`Campaña "${editingBanner.title}" guardada.`);
-    } else {
-      onUpdateBanners(prev => [editingBanner, ...prev]);
-      onNotify(`Campaña "${editingBanner.title}" creada.`);
-    }
-    setIsBannerModalOpen(false);
-    setEditingBanner(null);
-  };
-
-  const handleDeleteBanner = (id: string) => {
-    if (confirm("ATENCIÓN: ¿Eliminar campaña definitivamente?")) {
-      onUpdateBanners(prev => prev.filter(b => b.id !== id));
-      onNotify("Campaña eliminada.");
-    }
-  };
-
-  const handleEditBanner = (banner: Banner) => {
-    setEditingBanner({ ...banner });
-    setImageInputMode('url');
-    setIsBannerModalOpen(true);
-  };
-
-  const handleCreateBanner = () => {
-    setEditingBanner({
-      id: Math.random().toString(36).substr(2, 9),
-      title: '',
-      imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=1200',
-      position: 'header',
-      type: 'sector_campaign', // Default to platform campaign when creating manually
-      subtype: 'seasonality',
-      visibility_rules: { roles: ['user', 'guest'], plans: ['basic'], devices: ['desktop', 'mobile'] },
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
-      status: 'scheduled',
-      clicks: 0,
-      views: 0,
-      priorityScore: 100,
-      spawnType: '7_days',
-      frequencyCapPerUser: 1,
-      targetingRadius: 10
-    });
-    setImageInputMode('url');
-    setIsBannerModalOpen(true);
-  };
-
-  const handleGenerateBannerAi = async (isApprovalMode: boolean = false) => {
-    const targetBanner = isApprovalMode ? approvingAd?.draftBanner : editingBanner;
-    if (!aiPrompt || !targetBanner) return;
-    
-    setIsGenerating(true);
-    try {
-      const url = await getSectorImage(aiPrompt);
-      if (url) {
-        if (isApprovalMode && approvingAd) {
-            setApprovingAd({
-                ...approvingAd,
-                draftBanner: { ...approvingAd.draftBanner, imageUrl: url }
-            });
-        } else if (editingBanner) {
-            setEditingBanner({ ...editingBanner, imageUrl: url });
-        }
-        setImageInputMode('url');
-        onNotify("Imagen generada por IA.");
-      }
-    } catch (e) { console.error(e); onNotify("Error generando imagen."); }
-    finally { setIsGenerating(false); }
-  };
-
-  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isApprovalMode: boolean = false) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        if (isApprovalMode && approvingAd) {
-            setApprovingAd({
-                ...approvingAd,
-                draftBanner: { ...approvingAd.draftBanner, imageUrl: result }
-            });
-        } else if (editingBanner) {
-            setEditingBanner({ ...editingBanner, imageUrl: result });
-        }
-        setImageInputMode('upload');
+      const safeTotal = totalRatings || 1;
+      const sentimentPerc = {
+          positive: (sentiment.positive / safeTotal) * 100,
+          neutral: (sentiment.neutral / safeTotal) * 100,
+          negative: (sentiment.negative / safeTotal) * 100
       };
-      reader.readAsDataURL(file);
-    }
-  };
+      const nps = Math.round(sentimentPerc.positive - sentimentPerc.negative);
 
-  // --- SOCIAL MEDIA LOGIC ---
-  const handleSaveSocialLinks = () => {
-    if (setSocialLinks) {
-      setSocialLinks(tempSocialLinks);
-      onNotify("Enlaces de Redes Sociales actualizados.");
-    }
-  };
+      return { ctr, totalViews, totalClicks, sentimentPerc, nps, totalRatings };
+  }, [banners, businesses]);
 
-  // --- COUPON LOGIC (ENHANCED) ---
-  const handleSaveCoupon = () => {
-      if (!editingCoupon?.code) return;
-      const finalCode = editingCoupon.code.toUpperCase().trim();
-      
-      // Calculate Status based on limits and dates
-      let newStatus: DiscountCode['status'] = editingCoupon.status;
-      const now = new Date();
-      const validTo = new Date(editingCoupon.valid_to || '');
-      const isExpired = validTo < now;
-      const isSoldOut = (editingCoupon.usage_count || 0) >= (editingCoupon.usage_limit || 0);
-
-      if (isExpired) newStatus = 'expired';
-      else if (isSoldOut) newStatus = 'disabled';
-      else newStatus = editingCoupon.status;
-
-      const finalCoupon = { ...editingCoupon, code: finalCode, status: newStatus };
-      
-      if (coupons.find(c => c.id === finalCoupon.id)) {
-          setCoupons(prev => prev.map(c => c.id === finalCoupon.id ? finalCoupon : c));
-          onNotify(`Cupón ${finalCode} actualizado.`);
-      } else {
-          setCoupons(prev => [finalCoupon, ...prev]);
-          onNotify(`Cupón ${finalCode} creado.`);
-      }
-      setIsCouponModalOpen(false);
+  // ACTIONS
+  const handleSaveConfig = () => {
+      if (setSocialLinks) setSocialLinks(localSocials);
+      onNotify(`⚙️ Configuración Guardada:\n- Redes Sociales Actualizadas\n- Cobro Auto: ${autoPilot.autoCharge ? 'ON' : 'OFF'}`);
   };
 
   const handleCreateCoupon = () => {
-      setEditingCoupon({
-          id: Math.random().toString(36).substr(2, 9), code: '', type: 'porcentaje', value: 0, 
-          usage_limit: 100, usage_count: 0, valid_from: new Date().toISOString().split('T')[0], 
-          valid_to: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0], 
+      if (!newCoupon.code) return alert("Escribe un código");
+      const coupon: DiscountCode = {
+          id: Math.random().toString(36).substr(2, 9),
+          code: newCoupon.code.toUpperCase(),
+          type: newCoupon.type,
+          value: newCoupon.value,
+          active: true,
           status: 'active',
-          applicable_targets: ['plan_subscription']
-      });
-      setIsCouponModalOpen(true);
+          usage_limit: 100,
+          usage_count: 0,
+          valid_from: new Date().toISOString(),
+          valid_to: new Date(Date.now() + 30*24*60*60*1000).toISOString(),
+          applicable_targets: [newCoupon.target]
+      };
+      setCoupons(prev => [...prev, coupon]);
+      setNewCoupon({ code: '', value: 10, type: 'porcentaje', target: 'plan_subscription' });
+      onNotify("Cupón creado exitosamente.");
   };
 
   const handleDeleteCoupon = (id: string) => {
-      if (confirm("¿Eliminar cupón?")) setCoupons(prev => prev.filter(c => c.id !== id));
+      setCoupons(prev => prev.filter(c => c.id !== id));
+      onNotify("Cupón eliminado.");
   };
 
-  const toggleCouponStatus = (id: string) => {
-      setCoupons(prev => prev.map(c => {
-          if (c.id === id) {
-              const newStatus = c.status === 'active' ? 'disabled' : 'active';
-              return { ...c, status: newStatus };
-          }
-          return c;
-      }));
+  const handleResolveTicket = (id: string) => {
+      if (onUpdateTicket) onUpdateTicket(id, { status: 'resolved' });
+      onNotify("Ticket marcado como resuelto.");
   };
 
-  const toggleCouponTarget = (target: CouponTarget) => {
-      if (!editingCoupon) return;
-      const currentTargets = editingCoupon.applicable_targets || [];
-      if (currentTargets.includes(target)) {
-          setEditingCoupon({ ...editingCoupon, applicable_targets: currentTargets.filter(t => t !== target) });
-      } else {
-          setEditingCoupon({ ...editingCoupon, applicable_targets: [...currentTargets, target] });
+  // NEW STUDIO HANDLERS
+  const handleGenerateCampaign = () => {
+      if (studioMode === 'platform') {
+          if (platformType === 'season' && !seasonName) return alert("Indica el nombre de la temporada (Ej: Navidad)");
+          if (platformType === 'boost' && !targetSector) return alert("Selecciona un sector para impulsar");
       }
+
+      setIsGeneratingCampaign(true);
+      setGeneratedPreview(null);
+
+      // Simulate AI Generation
+      setTimeout(() => {
+          setIsGeneratingCampaign(false);
+          const mockImage = platformType === 'season' 
+            ? 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=800' // Christmas/Season vibe
+            : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=800'; // Generic sweet vibe
+
+          const mockTitle = platformType === 'season' 
+            ? `Especial ${seasonName}: Dulces Momentos`
+            : `Descubre lo mejor de: ${SECTORS.find(s => s.id === targetSector)?.label}`;
+
+          setGeneratedPreview({
+              title: mockTitle,
+              subtitle: platformType === 'season' ? 'Colección de Temporada' : 'Impulso Local',
+              imageUrl: mockImage,
+              ctaText: 'Explorar Ahora',
+              type: 'platform'
+          });
+          onNotify("✨ Campaña de Plataforma generada por IA.");
+      }, 1500);
   };
 
-  // --- EMAIL LOGIC ---
-  const handleSendEmail = (e: React.FormEvent) => {
-      e.preventDefault();
-      onNotify(`Email enviado a ${composeRecipient} (${composeSubject})`);
-      setComposeSubject('');
-      setComposeBody('');
-  };
+  const handlePublishPlatformCampaign = () => {
+      if (!generatedPreview) return;
+      
+      const newBanner: Banner = {
+          id: `bp_${Date.now()}`,
+          title: generatedPreview.title,
+          subtitle: generatedPreview.subtitle,
+          imageUrl: generatedPreview.imageUrl,
+          type: 'sector_campaign',
+          subtype: platformType === 'season' ? 'seasonality' : 'educational',
+          format: 'horizontal',
+          position: 'header',
+          start_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString(), // 30 days
+          status: 'active',
+          visibility_rules: { roles: ['all'], plans: ['all'] },
+          views: 0,
+          clicks: 0,
+          ctaText: generatedPreview.ctaText
+      };
 
-  const handleEditTemplate = (template: EmailTemplate) => {
-      setEditingTemplate(template);
-      setIsEmailModalOpen(true);
-  };
-
-  const handleSaveTemplate = () => {
-      if (editingTemplate) {
-          setEmailTemplates(prev => prev.map(t => t.id === editingTemplate.id ? editingTemplate : t));
-          onNotify("Plantilla actualizada.");
-          setIsEmailModalOpen(false);
-      }
-  };
-
-  const toggleTemplateStatus = (id: string) => {
-      setEmailTemplates(prev => prev.map(t => {
-          if (t.id === id) {
-              const newStatus = t.status === 'active' ? 'inactive' : 'active';
-              onNotify(`Plantilla ${t.label} ${newStatus === 'active' ? 'Activada' : 'Desactivada'}`);
-              return { ...t, status: newStatus };
-          }
-          return t;
-      }));
+      onUpdateBanners(prev => [newBanner, ...prev]);
+      setGeneratedPreview(null);
+      setSeasonName('');
+      setTargetSector('');
+      onNotify("🚀 Campaña de Plataforma publicada (Coste: 0€ - Interno)");
   };
 
   // --- RENDER ---
   return (
-    <div className="space-y-10 animate-fade-in relative">
+    <div className="space-y-10 animate-fade-in relative pb-20">
       
-      {/* HEADER TABS - SCROLLABLE ON MOBILE */}
+      {/* HEADER TABS */}
       <div className="flex bg-white p-2 rounded-3xl shadow-sm w-full md:w-fit border-2 border-gray-50 gap-2 overflow-x-auto scrollbar-hide">
-        {(['vision_global', 'cupones', 'banners', 'emails', 'soporte', 'redes'] as const).map(tab => (
+        {[
+            { id: 'vision_global', label: 'Vision Global' },
+            { id: 'ad_studio', label: 'Studio IA', icon: <Wand2 size={14}/> },
+            { id: 'ad_control', label: 'Centro Control', icon: <AlertOctagon size={14}/> },
+            { id: 'config', label: 'Ajustes & Redes', icon: <Settings size={14}/> },
+            { id: 'cupones', label: 'Cupones', icon: <Tag size={14}/> },
+            { id: 'emails', label: 'Comunicaciones', icon: <Mail size={14}/> },
+            { id: 'soporte', label: 'Soporte Mkt', icon: <MessageSquare size={14}/> }
+        ].map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-6 md:px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 ${activeTab === tab ? 'bg-orange-600 text-white shadow-xl' : 'text-gray-400 hover:text-gray-600'}`}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`px-6 md:px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${activeTab === tab.id ? 'bg-orange-600 text-white shadow-xl' : 'text-gray-400 hover:text-gray-600'}`}
           >
-            {tab.replace('_', ' ')}
+            {tab.icon} {tab.label}
           </button>
         ))}
       </div>
@@ -418,412 +226,486 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
       {activeTab === 'vision_global' && (
           <div className="space-y-8 animate-fade-in">
               <div className="bg-gradient-to-r from-gray-900 to-indigo-900 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
-                  <div className="relative z-10">
-                      <h4 className="text-xl font-black uppercase italic mb-2">Resumen de Impacto</h4>
-                      <p className="text-sm opacity-80 max-w-lg">Monitorización en tiempo real de campañas y publicidad.</p>
+                  <div className="relative z-10 grid md:grid-cols-2 gap-8">
+                      <div>
+                          <h4 className="text-xl font-black uppercase italic mb-2">Panel ROI & Sentimiento</h4>
+                          <p className="text-sm opacity-80 max-w-lg">Métricas clave de rendimiento y calidad.</p>
+                      </div>
+                      <div className="flex justify-end items-end gap-4">
+                          <div className="text-right">
+                              <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">CTR Global</p>
+                              <p className="text-4xl font-black">{roiMetrics.ctr.toFixed(2)}%</p>
+                          </div>
+                          <div className="h-10 w-px bg-white/20"></div>
+                          <div className="text-right">
+                              <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">NPS Score</p>
+                              <p className={`text-4xl font-black ${roiMetrics.nps > 50 ? 'text-green-400' : 'text-yellow-400'}`}>{roiMetrics.nps}</p>
+                          </div>
+                      </div>
                   </div>
                   <div className="absolute top-0 right-0 p-8 opacity-10 text-9xl">📊</div>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                      <p className="text-[10px] font-black uppercase text-gray-400">Solicitudes Ads</p>
-                      <p className="text-3xl font-black text-gray-900">{pendingRequests.length}</p>
+              {/* Sentiment Detail */}
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                  <div className="flex justify-between items-end mb-8">
+                      <h4 className="text-xl font-black text-gray-900 uppercase italic flex items-center gap-2">
+                          <Heart className="text-pink-500" /> Inteligencia de Opinión
+                      </h4>
+                      <p className="text-xs text-gray-500 font-bold">{roiMetrics.totalRatings} reseñas analizadas</p>
                   </div>
-                  <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                      <p className="text-[10px] font-black uppercase text-gray-400">Campañas Activas</p>
-                      <p className="text-3xl font-black text-green-600">{banners.filter(b => b.status === 'active').length}</p>
-                  </div>
-                  <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                      <p className="text-[10px] font-black uppercase text-gray-400">Cupones Canjeados</p>
-                      <p className="text-3xl font-black text-indigo-600">
-                          {coupons.reduce((acc, c) => acc + (c.usage_count || 0), 0)}
-                      </p>
-                  </div>
-                  <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                      <p className="text-[10px] font-black uppercase text-gray-400">Ingresos Publicidad (Mes)</p>
-                      <p className="text-3xl font-black text-orange-600">
-                          {invoices.filter(i => i.concept.includes('Publicidad') || i.concept.includes('Ads')).reduce((acc, i) => acc + i.total_amount, 0).toFixed(0)}€
-                      </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-green-50 p-6 rounded-[2rem] border border-green-100 text-center">
+                          <Smile size={40} className="text-green-500 mb-2 mx-auto" />
+                          <h5 className="font-black text-2xl text-green-700">{roiMetrics.sentimentPerc.positive.toFixed(1)}%</h5>
+                          <p className="text-[9px] font-bold text-green-600 uppercase tracking-widest">Positivo</p>
+                      </div>
+                      <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-200 text-center">
+                          <Meh size={40} className="text-gray-400 mb-2 mx-auto" />
+                          <h5 className="font-black text-2xl text-gray-600">{roiMetrics.sentimentPerc.neutral.toFixed(1)}%</h5>
+                          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Neutro</p>
+                      </div>
+                      <div className="bg-red-50 p-6 rounded-[2rem] border border-red-100 text-center">
+                          <Frown size={40} className="text-red-500 mb-2 mx-auto" />
+                          <h5 className="font-black text-2xl text-red-700">{roiMetrics.sentimentPerc.negative.toFixed(1)}%</h5>
+                          <p className="text-[9px] font-bold text-red-600 uppercase tracking-widest">Negativo</p>
+                      </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* --- BANNERS & REQUESTS TAB --- */}
-      {activeTab === 'banners' && (
-        <div className="space-y-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h4 className="text-xl font-brand font-black text-gray-900 uppercase italic">Campañas Publicitarias</h4>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Delay automático de 7 minutos entre impresiones.</p>
-                </div>
-                <div className="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto">
-                    <button onClick={() => setBannerSubTab('campanas')} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${bannerSubTab === 'campanas' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>Campañas Activas</button>
-                    <button onClick={() => setBannerSubTab('solicitudes')} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${bannerSubTab === 'solicitudes' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>
-                        Solicitudes {pendingRequests.length > 0 && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                    </button>
-                </div>
-            </div>
-
-            {bannerSubTab === 'campanas' ? (
-                <div className="space-y-6">
-                    {/* BANNER FILTER SYSTEM */}
-                    <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-                        <button 
-                            onClick={() => setBannerTypeFilter('all')} 
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border whitespace-nowrap ${bannerTypeFilter === 'all' ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
-                        >
-                            Todas ({banners.length})
-                        </button>
-                        <button 
-                            onClick={() => setBannerTypeFilter('platform')} 
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border whitespace-nowrap ${bannerTypeFilter === 'platform' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}
-                        >
-                            🌐 Plataforma ({banners.filter(b => b.type === 'sector_campaign').length})
-                        </button>
-                        <button 
-                            onClick={() => setBannerTypeFilter('business')} 
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border whitespace-nowrap ${bannerTypeFilter === 'business' ? 'bg-orange-600 text-white border-orange-600 shadow-md' : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300'}`}
-                        >
-                            🏪 Negocios ({banners.filter(b => b.type === 'business_campaign').length})
-                        </button>
-                    </div>
-
-                    <button onClick={handleCreateBanner} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-400 font-black text-xs uppercase hover:border-orange-400 hover:text-orange-500 transition-all">+ Nueva Campaña Manual</button>
-                    
-                    {/* RESPONSIVE GRID FOR BANNERS */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {filteredBanners.map(banner => (
-                            <div key={banner.id} className={`bg-white rounded-[2.5rem] overflow-hidden shadow-lg border-2 group relative transition-all ${banner.type === 'business_campaign' ? 'border-orange-100 hover:border-orange-200' : 'border-indigo-100 hover:border-indigo-200'}`}>
-                                <div className="h-40 bg-gray-200 relative">
-                                    <img src={banner.imageUrl} className="w-full h-full object-cover" />
-                                    <div className="absolute top-4 right-4 bg-black/50 backdrop-blur text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest">{banner.position}</div>
-                                    <div className={`absolute top-4 left-4 text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${banner.type === 'business_campaign' ? 'bg-orange-600' : 'bg-indigo-600'}`}>
-                                        {banner.type === 'business_campaign' ? 'Negocio' : 'Plataforma'}
-                                    </div>
-                                </div>
-                                <div className="p-6">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h5 className="font-brand font-black text-lg text-gray-900 leading-tight line-clamp-1">{banner.title}</h5>
-                                        <span className={`px-2 py-1 rounded text-[8px] font-black uppercase shrink-0 ${banner.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{banner.status}</span>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2 mb-4">
-                                        <span className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase">{banner.spawnType || '7_days'}</span>
-                                        <p className="text-[10px] text-gray-400 font-bold">{banner.start_date} → {banner.end_date}</p>
-                                    </div>
-                                    <div className="flex gap-2 border-t border-gray-50 pt-4">
-                                        <button onClick={() => handleEditBanner(banner)} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-600 py-2 rounded-xl text-[10px] font-black uppercase transition-colors">Editar</button>
-                                        <button onClick={() => handleDeleteBanner(banner.id)} className="px-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-lg transition-colors">🗑️</button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {pendingRequests.length === 0 ? (
-                        <div className="bg-gray-50 rounded-[3rem] p-12 text-center border-2 border-dashed border-gray-200">
-                            <span className="text-4xl block mb-2">👍</span>
-                            <p className="text-gray-400 font-bold text-xs uppercase">No hay solicitudes pendientes</p>
-                        </div>
-                    ) : (
-                        pendingRequests.map(({ request, business }) => (
-                            <div key={request.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-orange-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-2xl bg-gray-100 overflow-hidden border border-gray-200">
-                                        <img src={business.mainImage} className="w-full h-full object-cover" />
-                                    </div>
-                                    <div>
-                                        <h5 className="font-black text-gray-900 uppercase tracking-tight">{business.name}</h5>
-                                        <p className="text-[10px] font-bold text-gray-400">Solicitado: {request.requestDate.split('T')[0]}</p>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-[9px] font-black uppercase">
-                                                {request.type === '1_day' ? '1 Día' : request.type === '7_days' ? 'Semanal' : 'Quincenal'}
-                                            </span>
-                                            <span className="text-xs font-black text-gray-900">{request.price}€ + IVA</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex gap-3 w-full md:w-auto">
-                                    <button 
-                                        onClick={() => handleRejectAdRequest(business, request)}
-                                        className="flex-1 md:flex-none px-6 py-3 bg-white border border-gray-200 text-gray-500 rounded-xl text-[10px] font-black uppercase hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-all"
-                                    >
-                                        Rechazar
-                                    </button>
-                                    <button 
-                                        onClick={() => initiateAdApproval(business, request)}
-                                        className="flex-1 md:flex-none px-6 py-3 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-green-700 shadow-lg shadow-green-200 transition-all active:scale-95"
-                                    >
-                                        Aprobar y Cobrar
-                                    </button>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            )}
-        </div>
-      )}
-
-      {/* --- CUPONES TAB (ENHANCED) --- */}
-      {activeTab === 'cupones' && (
-        <div className="space-y-8">
-          <div className="flex justify-between items-center">
-            <div>
-                <h4 className="text-xl font-brand font-black text-gray-900 uppercase italic">Códigos Promocionales</h4>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Control de stock y caducidad</p>
-            </div>
-            <button onClick={handleCreateCoupon} className="bg-orange-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-orange-700 transition-all shadow-lg">+ Crear Cupón</button>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {coupons.map(coupon => {
-                const usagePercent = Math.min(100, ((coupon.usage_count || 0) / (coupon.usage_limit || 1)) * 100);
-                const isExpired = new Date(coupon.valid_to || '') < new Date();
-                const isSoldOut = (coupon.usage_count || 0) >= (coupon.usage_limit || 0);
-                
-                return (
-                  <div key={coupon.id} className={`bg-white p-6 rounded-[2.5rem] border-2 flex justify-between items-center group transition-all relative overflow-hidden ${isExpired || isSoldOut ? 'border-gray-100 opacity-70' : 'border-orange-100 hover:border-orange-300'}`}>
-                    <div className="relative z-10 w-full">
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <h5 className="text-2xl font-mono font-black text-gray-900 tracking-tighter">{coupon.code}</h5>
-                                <p className="text-xs font-bold text-orange-600">-{coupon.value}{coupon.type === 'porcentaje' ? '%' : '€'} Dto.</p>
-                            </div>
-                            <div className="text-right">
-                                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                                    isExpired ? 'bg-red-100 text-red-600' :
-                                    isSoldOut ? 'bg-gray-200 text-gray-500' :
-                                    coupon.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                                }`}>
-                                    {isExpired ? 'Caducado' : isSoldOut ? 'Agotado' : coupon.status}
-                                </span>
-                            </div>
-                        </div>
-                        
-                        {/* Target Badges */}
-                        <div className="flex gap-1 mb-3">
-                            {coupon.applicable_targets?.map(t => (
-                                <span key={t} className="text-[7px] font-black uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200">
-                                    {t === 'plan_subscription' ? 'Suscripción' : t === 'ad_banner' ? 'Banners' : 'Sedes'}
-                                </span>
-                            ))}
-                        </div>
-                        
-                        <div className="space-y-2 mt-4">
-                            <div className="flex justify-between text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                                <span>Usados: {coupon.usage_count} / {coupon.usage_limit}</span>
-                                <span>Expira: {coupon.valid_to}</span>
-                            </div>
-                            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all ${isSoldOut ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${usagePercent}%` }}></div>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-2 mt-4">
-                            <button onClick={() => { setEditingCoupon(coupon); setIsCouponModalOpen(true); }} className="flex-1 py-2 bg-gray-50 text-gray-600 rounded-xl text-[9px] font-black uppercase hover:bg-gray-100">Editar</button>
-                            <button onClick={() => toggleCouponStatus(coupon.id!)} className="px-4 py-2 bg-gray-50 text-gray-400 rounded-xl hover:text-gray-900" title="Pausar/Activar">⏯</button>
-                            <button onClick={() => handleDeleteCoupon(coupon.id!)} className="px-4 py-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100">🗑️</button>
-                        </div>
-                    </div>
+      {/* --- STUDIO IA (RENOVADO) --- */}
+      {activeTab === 'ad_studio' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
+              
+              {/* CONTROLS (LEFT PANEL) */}
+              <div className="lg:col-span-1 bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col">
+                  <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white"><Wand2 size={20} /></div>
+                      <div>
+                          <h3 className="text-xl font-black text-gray-900 uppercase italic">Studio IA 2.0</h3>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Generador Creativo</p>
+                      </div>
                   </div>
-                );
-            })}
+
+                  {/* Mode Selector */}
+                  <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
+                      <button 
+                          onClick={() => setStudioMode('platform')}
+                          className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${studioMode === 'platform' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-400'}`}
+                      >
+                          Plataforma
+                      </button>
+                      <button 
+                          onClick={() => setStudioMode('business')}
+                          className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${studioMode === 'business' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}
+                      >
+                          Negocio (B2B)
+                      </button>
+                  </div>
+
+                  {studioMode === 'platform' ? (
+                      <div className="space-y-6 flex-1 flex flex-col">
+                          <div>
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Tipo de Campaña Interna</label>
+                              <div className="grid grid-cols-2 gap-3">
+                                  <button 
+                                      onClick={() => setPlatformType('season')}
+                                      className={`p-3 rounded-2xl border-2 text-left transition-all ${platformType === 'season' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-500 hover:border-purple-200'}`}
+                                  >
+                                      <Calendar size={18} className="mb-2" />
+                                      <span className="text-[10px] font-black uppercase block">Temporada</span>
+                                  </button>
+                                  <button 
+                                      onClick={() => setPlatformType('boost')}
+                                      className={`p-3 rounded-2xl border-2 text-left transition-all ${platformType === 'boost' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-500 hover:border-green-200'}`}
+                                  >
+                                      <Megaphone size={18} className="mb-2" />
+                                      <span className="text-[10px] font-black uppercase block">Anti-Valle (Boost)</span>
+                                  </button>
+                              </div>
+                          </div>
+
+                          {platformType === 'season' && (
+                              <div className="animate-fade-in">
+                                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Nombre de la Temporada</label>
+                                  <input 
+                                      className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm mt-1 focus:border-purple-500 outline-none transition-colors"
+                                      placeholder="Ej: Navidad, Verano, Black Friday..."
+                                      value={seasonName}
+                                      onChange={e => setSeasonName(e.target.value)}
+                                  />
+                                  <p className="text-[9px] text-gray-400 mt-2 italic">Crea banners temáticos para decorar la home.</p>
+                              </div>
+                          )}
+
+                          {platformType === 'boost' && (
+                              <div className="animate-fade-in">
+                                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sector a Impulsar</label>
+                                  <select 
+                                      className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm mt-1 focus:border-green-500 outline-none transition-colors"
+                                      value={targetSector}
+                                      onChange={e => setTargetSector(e.target.value)}
+                                  >
+                                      <option value="">Selecciona Sector sin movimiento...</option>
+                                      {SECTORS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                  </select>
+                                  <div className="mt-3 bg-green-50 p-3 rounded-xl border border-green-100 flex items-start gap-2">
+                                      <Sparkles size={14} className="text-green-600 mt-0.5" />
+                                      <p className="text-[9px] text-green-800 font-medium">Esta acción creará visibilidad gratuita para este sector para reactivar el tráfico.</p>
+                                  </div>
+                              </div>
+                          )}
+
+                          <div className="mt-auto">
+                              <button 
+                                  onClick={handleGenerateCampaign} 
+                                  disabled={isGeneratingCampaign} 
+                                  className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-600 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                              >
+                                  {isGeneratingCampaign ? 'Diseñando...' : 'Generar Arte IA'}
+                              </button>
+                          </div>
+                      </div>
+                  ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50">
+                          <Target size={48} className="mb-4 text-gray-300" />
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Modo B2B para Clientes</p>
+                          <p className="text-[9px] text-gray-400 mt-2">Gestionar solicitudes individuales en pestaña "Control".</p>
+                      </div>
+                  )}
+              </div>
+
+              {/* PREVIEW (RIGHT PANEL) */}
+              <div className="lg:col-span-2 bg-gray-50 rounded-[3rem] p-8 relative flex flex-col items-center justify-center border-2 border-dashed border-gray-200">
+                  {generatedPreview ? (
+                      <div className="w-full max-w-lg animate-fade-in-up">
+                          <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 text-center">Vista Previa Generada</h4>
+                          
+                          {/* Banner Card Preview */}
+                          <div className="bg-white rounded-[2rem] overflow-hidden shadow-2xl relative group">
+                              <div className="h-48 relative overflow-hidden">
+                                  <img src={generatedPreview.imageUrl} className="w-full h-full object-cover" />
+                                  <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm">
+                                      {generatedPreview.subtitle}
+                                  </div>
+                              </div>
+                              <div className="p-6">
+                                  <h3 className="text-2xl font-brand font-black text-gray-900 italic tracking-tighter mb-2">{generatedPreview.title}</h3>
+                                  <button className="text-xs font-bold underline decoration-2 decoration-purple-400">{generatedPreview.ctaText}</button>
+                              </div>
+                          </div>
+
+                          <div className="flex gap-4 mt-8">
+                              <button onClick={() => setGeneratedPreview(null)} className="flex-1 py-3 text-gray-400 font-black text-[10px] uppercase tracking-widest hover:text-gray-600">Descartar</button>
+                              <button onClick={handlePublishPlatformCampaign} className="flex-[2] bg-green-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-green-700 shadow-lg flex items-center justify-center gap-2">
+                                  <Zap size={14} /> Publicar (0€ Interno)
+                              </button>
+                          </div>
+                      </div>
+                  ) : (
+                      <div className="text-center text-gray-400">
+                          <Layout size={64} className="mb-4 opacity-20 mx-auto" />
+                          <p className="font-bold uppercase text-xs tracking-widest">Esperando instrucciones creativas...</p>
+                          <p className="text-[9px] mt-2 opacity-60">Configura los parámetros a la izquierda para generar.</p>
+                      </div>
+                  )}
+              </div>
           </div>
-        </div>
       )}
 
-      {/* --- EMAILS TAB (ENHANCED) --- */}
+      {activeTab === 'ad_control' && (
+          <div className="h-[800px] overflow-hidden flex flex-col">
+              <div className="mb-6 px-2"><h3 className="text-2xl font-black text-gray-900 uppercase italic">Autopista de Aprobación</h3></div>
+              <div className="flex-1 grid grid-cols-3 gap-6 overflow-hidden">
+                  <div className="bg-green-50/50 rounded-[2.5rem] border border-green-100 p-6"><h4 className="font-black text-green-800 uppercase tracking-widest">Vía Rápida</h4></div>
+                  <div className="bg-yellow-50/50 rounded-[2.5rem] border border-yellow-100 p-6"><h4 className="font-black text-yellow-800 uppercase tracking-widest">Revisión</h4></div>
+                  <div className="bg-red-50/50 rounded-[2.5rem] border border-red-100 p-6"><h4 className="font-black text-red-800 uppercase tracking-widest">Manual</h4></div>
+              </div>
+          </div>
+      )}
+
+      {/* --- CUPONES TAB (RESTORED) --- */}
+      {activeTab === 'cupones' && (
+          <div className="space-y-8 animate-fade-in">
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                  <h4 className="font-black text-gray-900 uppercase italic text-xl mb-6">Generador de Cupones</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                      <div className="md:col-span-1">
+                          <label className="text-[9px] font-black uppercase text-gray-400">Código</label>
+                          <input className="w-full bg-gray-50 border-2 border-gray-100 p-3 rounded-xl font-black uppercase text-sm mt-1" placeholder="Ej: VERANO20" value={newCoupon.code} onChange={e => setNewCoupon({...newCoupon, code: e.target.value})} />
+                      </div>
+                      <div className="md:col-span-1">
+                          <label className="text-[9px] font-black uppercase text-gray-400">Tipo</label>
+                          <select className="w-full bg-gray-50 border-2 border-gray-100 p-3 rounded-xl font-bold text-sm mt-1" value={newCoupon.type} onChange={e => setNewCoupon({...newCoupon, type: e.target.value as any})}>
+                              <option value="porcentaje">Porcentaje (%)</option>
+                              <option value="fijo">Importe Fijo (€)</option>
+                          </select>
+                      </div>
+                      <div className="md:col-span-1">
+                          <label className="text-[9px] font-black uppercase text-gray-400">Valor</label>
+                          <input type="number" className="w-full bg-gray-50 border-2 border-gray-100 p-3 rounded-xl font-bold text-sm mt-1" value={newCoupon.value} onChange={e => setNewCoupon({...newCoupon, value: Number(e.target.value)})} />
+                      </div>
+                      <div className="md:col-span-1">
+                          <label className="text-[9px] font-black uppercase text-gray-400">Aplicar a</label>
+                          <select className="w-full bg-gray-50 border-2 border-gray-100 p-3 rounded-xl font-bold text-sm mt-1" value={newCoupon.target} onChange={e => setNewCoupon({...newCoupon, target: e.target.value as any})}>
+                              <option value="plan_subscription">Suscripciones</option>
+                              <option value="ad_banner">Publicidad</option>
+                              <option value="extra_location">Sedes Extra</option>
+                          </select>
+                      </div>
+                      <button onClick={handleCreateCoupon} className="bg-gray-900 text-white px-6 py-3.5 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2">
+                          <Plus size={16} /> Crear
+                      </button>
+                  </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {coupons.map(coupon => (
+                      <div key={coupon.id} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm relative group hover:shadow-lg transition-all">
+                          <button onClick={() => handleDeleteCoupon(coupon.id!)} className="absolute top-4 right-4 bg-red-50 text-red-500 p-2 rounded-full hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100">
+                              <Trash2 size={16} />
+                          </button>
+                          <div className="flex items-center gap-4 mb-4">
+                              <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-xl font-black border-2 border-orange-200 border-dashed">
+                                  %
+                              </div>
+                              <div>
+                                  <h5 className="font-black text-xl text-gray-900 uppercase tracking-tight">{coupon.code}</h5>
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase">{coupon.type === 'porcentaje' ? `-${coupon.value}% Descuento` : `-${coupon.value}€ Descuento`}</p>
+                              </div>
+                          </div>
+                          <div className="flex justify-between items-center text-[9px] font-black uppercase text-gray-400 bg-gray-50 p-3 rounded-xl">
+                              <span>Usos: {coupon.usage_count}/{coupon.usage_limit}</span>
+                              <span className={coupon.status === 'active' ? 'text-green-500' : 'text-red-500'}>{coupon.status}</span>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
+
+      {/* --- EMAILS TAB (RESTORED) --- */}
       {activeTab === 'emails' && (
-        <div className="space-y-8 animate-fade-in">
-            {/* Header + Subtabs + Filter */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h4 className="text-xl font-brand font-black text-gray-900 uppercase italic">Centro de Comunicaciones</h4>
-                <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
-                    <button onClick={() => setEmailSubTab('plantillas')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${emailSubTab === 'plantillas' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>Plantillas</button>
-                    <button onClick={() => setEmailSubTab('redactar')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${emailSubTab === 'redactar' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>Redactar</button>
-                    <button onClick={() => setEmailSubTab('logs')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${emailSubTab === 'logs' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>Registros</button>
-                </div>
-            </div>
+          <div className="space-y-8 animate-fade-in">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 h-[600px] overflow-y-auto scrollbar-hide">
+                      <h4 className="font-black text-gray-900 uppercase italic text-xl mb-6">Plantillas de Sistema</h4>
+                      <div className="space-y-4">
+                          {MOCK_EMAIL_TEMPLATES.map(template => (
+                              <div key={template.id} className="p-4 rounded-2xl border border-gray-100 hover:border-indigo-200 bg-gray-50 hover:bg-white transition-all cursor-pointer group">
+                                  <div className="flex justify-between items-start mb-2">
+                                      <h5 className="font-bold text-sm text-gray-900">{template.label}</h5>
+                                      <span className="text-[8px] font-black uppercase bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{template.type}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 font-medium truncate">Asunto: {template.subject}</p>
+                                  <div className="mt-3 flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                      {template.variables.map(v => (
+                                          <span key={v} className="text-[8px] bg-white border border-gray-200 px-1.5 py-0.5 rounded text-gray-400 font-mono">{`{{${v}}}`}</span>
+                                      ))}
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
 
-            {emailSubTab === 'logs' && (
-                <div className="bg-white rounded-[2rem] border border-gray-100 overflow-hidden shadow-sm">
-                    <div className="bg-gray-50 p-4 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">
-                        Registro de Envíos Automáticos (Auto-Emails)
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                        {notificationLogs.map(log => (
-                            <div key={log.id} className="p-4 border-b border-gray-50 flex justify-between items-center text-xs">
-                                <div>
-                                    <p className="font-bold text-gray-900">{log.subject}</p>
-                                    <p className="text-gray-500">{log.recipient} • {log.type}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-mono text-[10px] text-gray-400">{log.timestamp}</p>
-                                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${log.status === 'sent' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{log.status}</span>
-                                </div>
-                            </div>
-                        ))}
-                        {notificationLogs.length === 0 && <div className="p-8 text-center text-gray-400 text-xs">Sin actividad reciente</div>}
-                    </div>
-                </div>
-            )}
-
-            {emailSubTab === 'plantillas' && (
-                <div className="space-y-6">
-                    {/* Category Filter */}
-                    <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        <span className="text-[10px] font-black text-gray-400 uppercase mr-2 shrink-0">Filtrar por:</span>
-                        {[
-                            { id: 'all', label: 'Todos' },
-                            { id: 'onboarding', label: '1. Onboarding' },
-                            { id: 'subscription', label: '2. Suscripciones' },
-                            { id: 'ads', label: '3. Publicidad' },
-                            { id: 'cancellation', label: '4. Cancelaciones' },
-                            { id: 'coupons', label: '5. Cupones' },
-                            { id: 'system', label: '8. Sistema' },
-                        ].map(cat => (
-                            <button 
-                                key={cat.id}
-                                onClick={() => setEmailFilterType(cat.id)}
-                                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase whitespace-nowrap transition-all border ${
-                                    emailFilterType === cat.id 
-                                        ? 'bg-gray-900 text-white border-gray-900' 
-                                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
-                                }`}
-                            >
-                                {cat.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredEmailTemplates.map(tpl => (
-                            <div key={tpl.id} className={`bg-white p-6 rounded-[2rem] border-2 shadow-sm hover:shadow-md transition-all group relative ${tpl.status === 'inactive' ? 'border-gray-100 opacity-60' : 'border-indigo-50'}`}>
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${tpl.status === 'active' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>{tpl.type}</span>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => toggleTemplateStatus(tpl.id)} className="text-gray-400 hover:text-green-600 p-1" title={tpl.status === 'active' ? 'Desactivar' : 'Activar'}>
-                                            {tpl.status === 'active' ? '⏸' : '▶'}
-                                        </button>
-                                        <button onClick={() => handleEditTemplate(tpl)} className="text-gray-400 hover:text-indigo-600 p-1">✏️</button>
-                                    </div>
-                                </div>
-                                <h5 className="font-bold text-gray-900 mb-1 leading-tight">{tpl.label}</h5>
-                                <p className="text-xs text-gray-500 italic truncate mb-4">"{tpl.subject}"</p>
-                                <div className="flex flex-wrap gap-1">
-                                    {tpl.variables.map(v => (
-                                        <span key={v} className="text-[8px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-mono">{v}</span>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Redactar Tab Logic (Preserved) */}
-            {emailSubTab === 'redactar' && (
-                <div className="bg-white p-8 rounded-[3rem] shadow-lg border border-gray-100 max-w-3xl mx-auto">
-                    <form onSubmit={handleSendEmail} className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Destinatario</label>
-                            <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold text-sm" value={composeRecipient} onChange={e => setComposeRecipient(e.target.value)}>
-                                <option value="all_users">Todos los Usuarios</option>
-                                <option value="all_businesses">Todos los Negocios</option>
-                                <option value="admins">Administradores</option>
-                            </select>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Asunto</label>
-                            <input required className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold text-sm" value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Título del email..." />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Contenido</label>
-                            <textarea required className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 font-medium text-sm h-48" value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder="Escribe tu mensaje aquí..." />
-                        </div>
-                        <button className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-indigo-600 transition-all shadow-xl">Enviar Campaña</button>
-                    </form>
-                </div>
-            )}
-        </div>
+                  <div className="bg-gray-950 text-white p-8 rounded-[3rem] shadow-xl border-4 border-gray-800 h-[600px] overflow-hidden flex flex-col">
+                      <div className="flex justify-between items-center mb-6">
+                          <h4 className="font-black uppercase italic text-xl flex items-center gap-2">
+                              <Send size={20} className="text-green-500" /> Log de Envíos
+                          </h4>
+                          <span className="text-[9px] font-black bg-white/10 px-3 py-1 rounded-full animate-pulse">EN VIVO</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-xs">
+                          {getNotificationLogs().map(log => (
+                              <div key={log.id} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
+                                  <div className="flex justify-between mb-1 text-gray-400 text-[10px]">
+                                      <span>{log.timestamp}</span>
+                                      <span className="text-orange-400">{log.trigger}</span>
+                                  </div>
+                                  <p className="text-white font-bold mb-1">To: {log.recipient}</p>
+                                  <p className="text-gray-500 text-[10px] truncate">{log.subject}</p>
+                              </div>
+                          ))}
+                          {getNotificationLogs().length === 0 && (
+                              <p className="text-gray-600 text-center py-10">Sin actividad reciente.</p>
+                          )}
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
-      {/* --- SOPORTE & REDES TABS (Preserved) --- */}
-      {/* ... (Keep existing implementation for soporte and redes) ... */}
+      {/* --- SOPORTE TAB (RESTORED) --- */}
       {activeTab === 'soporte' && (
-        <div className="space-y-6 animate-fade-in">
-            <h3 className="text-xl font-black text-gray-900 uppercase italic">Tickets de Marketing</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {marketingTickets.length === 0 ? (
-                    <div className="col-span-full py-20 text-center text-gray-300 font-bold uppercase text-xs tracking-[0.2em]">
-                        No hay tickets de marketing pendientes.
-                    </div>
-                ) : (
-                    marketingTickets.map(ticket => (
-                        <div key={ticket.id} className={`p-6 rounded-[2rem] border-2 flex flex-col justify-between ${ticket.status === 'resolved' ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-white border-purple-100 shadow-md'}`}>
-                            <div>
-                                <div className="flex justify-between items-start mb-3">
-                                    <span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-purple-50 text-purple-600 border border-purple-100">MARKETING</span>
-                                    <span className="text-[9px] font-bold text-gray-400">{ticket.created_at.split('T')[0]}</span>
-                                </div>
-                                <h5 className="font-brand font-black text-gray-900 leading-tight mb-2">{ticket.subject}</h5>
-                                <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-xl mb-4">"{ticket.description}"</p>
-                                <p className="text-[9px] font-bold text-gray-400 uppercase">Solicitante: {ticket.user_name}</p>
-                            </div>
-                            {ticket.status !== 'resolved' && (
-                                <button onClick={() => handleResolveTicket(ticket.id)} className="mt-4 w-full bg-green-50 text-green-600 py-3 rounded-xl font-black text-[9px] uppercase hover:bg-green-600 hover:text-white transition-all border border-green-100">Marcar Resuelto</button>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
+          <div className="space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-900 uppercase italic">Tickets de Marketing</h3>
+                  <span className="bg-orange-100 text-orange-700 px-4 py-2 rounded-xl text-xs font-black uppercase">
+                      {tickets.filter(t => t.department === 'marketing' && t.status !== 'resolved').length} Pendientes
+                  </span>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {tickets.filter(t => t.department === 'marketing').map(ticket => (
+                      <div key={ticket.id} className={`bg-white p-6 rounded-[2rem] border-2 shadow-sm transition-all ${ticket.status === 'resolved' ? 'border-gray-100 opacity-60' : 'border-orange-100'}`}>
+                          <div className="flex justify-between items-start mb-4">
+                              <span className="text-[9px] font-black uppercase bg-gray-100 text-gray-500 px-2 py-1 rounded">{ticket.created_at.split('T')[0]}</span>
+                              <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${ticket.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{ticket.status}</span>
+                          </div>
+                          <h5 className="font-bold text-gray-900 mb-2">{ticket.subject}</h5>
+                          <p className="text-xs text-gray-600 mb-6 bg-gray-50 p-3 rounded-xl">{ticket.description}</p>
+                          <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold text-gray-900">👤 {ticket.user_name}</span>
+                              {ticket.status !== 'resolved' && (
+                                  <button onClick={() => handleResolveTicket(ticket.id)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase hover:bg-green-700 transition-colors">
+                                      Resolver
+                                  </button>
+                              )}
+                          </div>
+                      </div>
+                  ))}
+                  {tickets.filter(t => t.department === 'marketing').length === 0 && (
+                      <div className="col-span-full text-center py-20 bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
+                          <p className="text-gray-400 font-bold uppercase text-xs">No hay tickets de marketing registrados.</p>
+                      </div>
+                  )}
+              </div>
+          </div>
       )}
 
-      {activeTab === 'redes' && (
-        <div className="space-y-8">
-            <div className="flex justify-between items-center">
-                <h4 className="text-xl font-brand font-black text-gray-900 uppercase italic">Redes Sociales</h4>
-                <button onClick={handleSaveSocialLinks} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg">Guardar</button>
-            </div>
-            <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-lg space-y-6">
-                {Object.keys(tempSocialLinks).map(key => (
-                    <div key={key} className="space-y-2">
-                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{key}</label>
-                        <input className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-medium text-sm focus:border-indigo-600 outline-none" value={tempSocialLinks[key as keyof SocialConfig]} onChange={e => setTempSocialLinks({...tempSocialLinks, [key]: e.target.value})} placeholder={`https://${key}.com/...`} />
-                    </div>
-                ))}
-            </div>
-        </div>
-      )}
+      {/* --- SETTINGS TAB (RESTORED WITH SOCIALS) --- */}
+      {activeTab === 'config' && (
+          <div className="space-y-8 animate-fade-in pb-10">
+              <div className="flex justify-between items-center px-4">
+                  <h3 className="text-2xl font-black text-gray-900 uppercase italic">Parametrización Global</h3>
+                  <button onClick={handleSaveConfig} className="bg-gray-900 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg flex items-center gap-2">
+                      <Save size={16} /> Guardar Cambios
+                  </button>
+              </div>
 
-      {/* --- MODALS (Banner Approval, Edit Banner, etc.) --- */}
-      {/* Kept existing modal implementations */}
-      {approvingAd && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-            <div className="bg-white rounded-[2.5rem] p-6 md:p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto border-4 border-green-500/20">
-               <div className="flex justify-between items-start mb-6">
-                   <div>
-                       <h3 className="text-2xl font-brand font-black text-gray-900 uppercase italic">Aprobar Solicitud</h3>
-                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Negocio: {approvingAd.business.name}</p>
-                   </div>
-                   <button onClick={() => setApprovingAd(null)} className="text-gray-400 hover:text-gray-900">✕</button>
-               </div>
-               {/* Simplified Approval Content for brevity, assume full form here */}
-               <div className="bg-yellow-50 p-4 rounded-xl text-yellow-800 text-xs font-bold mb-4">
-                   Nota: Al aprobar, se creará un Banner tipo Pop-up (Sticky Bottom) y se cobrará instantáneamente.
-               </div>
-               <button onClick={confirmAdApproval} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-green-700 transition-all shadow-xl">
-                   Confirmar Cobro y Activar
-               </button>
-            </div>
-        </div>
+              {/* SOCIAL MEDIA CONFIG */}
+              <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                  <h4 className="font-black text-gray-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <LinkIcon size={18} className="text-pink-500"/> Redes Sociales (Footer & Sidebar)
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                          <Instagram size={20} className="text-pink-600" />
+                          <input className="bg-transparent w-full text-xs font-bold outline-none" placeholder="URL Instagram" value={localSocials.instagram} onChange={e => setLocalSocials({...localSocials, instagram: e.target.value})} />
+                      </div>
+                      <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                          <Facebook size={20} className="text-blue-600" />
+                          <input className="bg-transparent w-full text-xs font-bold outline-none" placeholder="URL Facebook" value={localSocials.facebook} onChange={e => setLocalSocials({...localSocials, facebook: e.target.value})} />
+                      </div>
+                      <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                          <Twitter size={20} className="text-gray-800" />
+                          <input className="bg-transparent w-full text-xs font-bold outline-none" placeholder="URL Twitter / X" value={localSocials.twitter} onChange={e => setLocalSocials({...localSocials, twitter: e.target.value})} />
+                      </div>
+                      <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                          <Video size={20} className="text-black" />
+                          <input className="bg-transparent w-full text-xs font-bold outline-none" placeholder="URL TikTok" value={localSocials.tiktok} onChange={e => setLocalSocials({...localSocials, tiktok: e.target.value})} />
+                      </div>
+                      <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                          <Youtube size={20} className="text-red-600" />
+                          <input className="bg-transparent w-full text-xs font-bold outline-none" placeholder="URL YouTube" value={localSocials.youtube} onChange={e => setLocalSocials({...localSocials, youtube: e.target.value})} />
+                      </div>
+                  </div>
+              </div>
+
+              {/* ... (Existing Financial & AI Config Blocks) ... */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* 1. TARIFAS CARD */}
+                  <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                      <h4 className="font-black text-gray-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                          <Euro size={18} className="text-orange-600"/> Tarifas Base
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                          {Object.entries(configRates).map(([key, val]) => (
+                              <div key={key}>
+                                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{key}</label>
+                                  <div className="flex items-center mt-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                                      <input type="number" className="bg-transparent w-full font-bold text-sm outline-none" value={val} onChange={e => setConfigRates({...configRates, [key]: Number(e.target.value)})} />
+                                      <span className="text-xs font-black text-gray-400">€</span>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+
+                  {/* 2. CALIBRACION IA */}
+                  <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100">
+                      <h4 className="font-black text-gray-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                          <Sliders size={18} className="text-indigo-600"/> Semáforo de Confianza
+                      </h4>
+                      <div className="space-y-4">
+                          <div className="flex justify-between items-center">
+                              <label className="text-[10px] font-black text-gray-400 uppercase">Auto-Aprobar Score</label>
+                              <span className="text-xl font-black text-indigo-600">{aiConfidenceThreshold}%</span>
+                          </div>
+                          <input type="range" min="50" max="99" className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" value={aiConfidenceThreshold} onChange={e => setAiConfidenceThreshold(Number(e.target.value))} />
+                      </div>
+                  </div>
+              </div>
+
+              {/* 3. AI AUTOPILOT SECTION */}
+              <div className="bg-gradient-to-br from-gray-900 to-indigo-900 rounded-[3rem] p-8 shadow-2xl border-4 border-gray-800">
+                  <h4 className="font-black text-white uppercase italic text-xl mb-8 flex items-center gap-3">
+                      <Bot className="text-cyan-400" /> Nivel 3: Piloto Automático (IA)
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      {/* 1. AUTO-COBRO */}
+                      <div className={`bg-white/5 backdrop-blur-md rounded-2xl p-6 border transition-colors ${autoPilot.autoCharge ? 'border-green-400/50 bg-green-900/10' : 'border-white/10'}`}>
+                          <div className="flex justify-between items-start mb-4">
+                              <Zap className="text-green-400" size={24} />
+                              <button onClick={() => setAutoPilot({...autoPilot, autoCharge: !autoPilot.autoCharge})} className={`w-12 h-6 rounded-full relative transition-colors ${autoPilot.autoCharge ? 'bg-green-500' : 'bg-gray-600'}`}>
+                                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoPilot.autoCharge ? 'left-7' : 'left-1'}`}></div>
+                              </button>
+                          </div>
+                          <h5 className="text-sm font-black text-white uppercase mb-2">Cobro en Verde</h5>
+                          <p className="text-[10px] text-gray-400 font-medium">Si IA aprueba, cobra automáticamente.</p>
+                      </div>
+                      
+                      {/* 2. SOPORTE IA */}
+                      <div className={`bg-white/5 backdrop-blur-md rounded-2xl p-6 border transition-colors ${autoPilot.aiSupport ? 'border-blue-400/50 bg-blue-900/10' : 'border-white/10'}`}>
+                          <div className="flex justify-between items-start mb-4">
+                              <MessageSquare className="text-blue-400" size={24} />
+                              <button onClick={() => setAutoPilot({...autoPilot, aiSupport: !autoPilot.aiSupport})} className={`w-12 h-6 rounded-full relative transition-colors ${autoPilot.aiSupport ? 'bg-blue-500' : 'bg-gray-600'}`}>
+                                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoPilot.aiSupport ? 'left-7' : 'left-1'}`}></div>
+                              </button>
+                          </div>
+                          <h5 className="text-sm font-black text-white uppercase mb-2">Soporte IA</h5>
+                          <p className="text-[10px] text-gray-400 font-medium">Auto-emails de estado y facturas.</p>
+                      </div>
+
+                      {/* 3. ANTI-VALLE */}
+                      <div className={`bg-white/5 backdrop-blur-md rounded-2xl p-6 border transition-colors ${autoPilot.antiValley ? 'border-purple-400/50 bg-purple-900/10' : 'border-white/10'}`}>
+                          <div className="flex justify-between items-start mb-4">
+                              <TrendingUp className="text-purple-400" size={24} />
+                              <button onClick={() => setAutoPilot({...autoPilot, antiValley: !autoPilot.antiValley})} className={`w-12 h-6 rounded-full relative transition-colors ${autoPilot.antiValley ? 'bg-purple-500' : 'bg-gray-600'}`}>
+                                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoPilot.antiValley ? 'left-7' : 'left-1'}`}></div>
+                              </button>
+                          </div>
+                          <h5 className="text-sm font-black text-white uppercase mb-2">Anti-Valle</h5>
+                          <p className="text-[10px] text-gray-400 font-medium">Genera cupones si el tráfico baja.</p>
+                      </div>
+
+                      {/* 4. AUTO-FILL */}
+                      <div className={`bg-white/5 backdrop-blur-md rounded-2xl p-6 border transition-colors ${autoPilot.autoFill ? 'border-yellow-400/50 bg-yellow-900/10' : 'border-white/10'}`}>
+                          <div className="flex justify-between items-start mb-4">
+                              <Wand2 className="text-yellow-400" size={24} />
+                              <button onClick={() => setAutoPilot({...autoPilot, autoFill: !autoPilot.autoFill})} className={`w-12 h-6 rounded-full relative transition-colors ${autoPilot.autoFill ? 'bg-yellow-500' : 'bg-gray-600'}`}>
+                                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoPilot.autoFill ? 'left-7' : 'left-1'}`}></div>
+                              </button>
+                          </div>
+                          <h5 className="text-sm font-black text-white uppercase mb-2">Auto-Relleno</h5>
+                          <p className="text-[10px] text-gray-400 font-medium">Banners automáticos si hay huecos.</p>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
       
-      {/* ... Other modals preserved ... */}
     </div>
   );
 };

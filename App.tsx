@@ -36,6 +36,7 @@ import { StoryRail } from './components/StoryRail';
 import { EventRequestModal } from './components/EventRequestModal';
 import { NotificationCenter } from './components/NotificationCenter'; 
 import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { SweetBattle } from './components/SweetBattle';
 
 // Modals
 import { AuthModal } from './components/AuthModal';
@@ -396,6 +397,17 @@ export const App = () => {
       setTimeout(() => setIsNotifCenterOpen(false), 5000);
   };
 
+  // --- NEW: HANDLE BATTLE VOTE ---
+  const handleBattleVote = (winnerId: string) => {
+      // Simulate backend update for gamification
+      setBusinesses(prev => prev.map(b => {
+          if (b.id === winnerId) {
+              return { ...b, battleWins: (b.battleWins || 0) + 1 };
+          }
+          return b;
+      }));
+  };
+
   const toggleTag = (tag: string) => {
     setSelectedTags(prev => 
       prev.includes(tag) 
@@ -621,6 +633,10 @@ export const App = () => {
         {!activeSector && (
             <div className="space-y-20">
                 <TopBusinesses businesses={filteredSectorBusinesses} isNational={false} userProvince={userProvince} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} currentUser={currentUser} onToggleFavorite={(id) => { if (!currentUser) return setIsAuthModalOpen(true); const newFavs = currentUser.favorites?.includes(id) ? currentUser.favorites.filter(f => f !== id) : [...(currentUser.favorites || []), id]; handleUpdateUser({ ...currentUser, favorites: newFavs }); }} />
+                
+                {/* NEW: SWEET BATTLE COMPONENT */}
+                <SweetBattle businesses={businesses} onVote={handleBattleVote} />
+
                 <AboutUs />
                 <section className="space-y-8 pb-10">
                     <div className="text-center space-y-4">

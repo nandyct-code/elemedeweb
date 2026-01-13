@@ -30,13 +30,24 @@ export const StoryRail: React.FC<StoryRailProps> = ({ businesses, onViewBusiness
                         className="flex flex-col items-center gap-2 cursor-pointer group flex-shrink-0"
                         onClick={() => onViewBusiness(biz.id)}
                     >
-                        <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-pink-600 shadow-md group-hover:scale-105 transition-transform">
-                            <div className="w-full h-full rounded-full border-2 border-white overflow-hidden bg-gray-100">
-                                <img src={biz.mainImage} alt={biz.name} className="w-full h-full object-cover" />
+                        <div className={`relative w-16 h-16 md:w-20 md:h-20 rounded-full p-[3px] shadow-md group-hover:scale-105 transition-transform ${story.mediaType === 'video' ? 'bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500 animate-pulse-slow' : 'bg-gradient-to-tr from-yellow-400 via-orange-500 to-pink-600'}`}>
+                            <div className="w-full h-full rounded-full border-2 border-white overflow-hidden bg-gray-100 relative">
+                                {story.mediaType === 'video' ? (
+                                    <video 
+                                        src={story.imageUrl} 
+                                        className="w-full h-full object-cover" 
+                                        muted 
+                                        loop 
+                                        autoPlay 
+                                        playsInline 
+                                    />
+                                ) : (
+                                    <img src={story.imageUrl || biz.mainImage} alt={biz.name} className="w-full h-full object-cover" />
+                                )}
                             </div>
                             {story.type === 'fresh_batch' && (
                                 <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow-sm text-xs">
-                                    🔥
+                                    {story.mediaType === 'video' ? '🎬' : '🔥'}
                                 </div>
                             )}
                         </div>
