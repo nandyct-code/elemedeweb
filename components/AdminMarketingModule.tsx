@@ -8,7 +8,7 @@ import {
   TrendingUp, MousePointer, Heart, Smile, Meh, Frown, 
   Euro, Sliders, ShieldAlert, Bot, Zap, Lock, BarChart3,
   Plus, Trash2, Save, Send, Link as LinkIcon, Instagram, Facebook, Twitter, Youtube, Video,
-  Layout, Calendar, Megaphone, Sparkles, Target
+  Layout, Calendar, Megaphone, Sparkles, Target, CheckCircle, XCircle
 } from 'lucide-react';
 
 interface AdminMarketingModuleProps {
@@ -101,6 +101,21 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
       return { ctr, totalViews, totalClicks, sentimentPerc, nps, totalRatings };
   }, [banners, businesses]);
 
+  // CONTROL CENTER: PENDING REQUESTS
+  const pendingRequests = useMemo(() => {
+    const list: { business: Business, request: AdRequest }[] = [];
+    businesses.forEach(b => {
+      if (b.adRequests) {
+        b.adRequests.forEach(req => {
+          if (req.status === 'pending') {
+            list.push({ business: b, request: req });
+          }
+        });
+      }
+    });
+    return list;
+  }, [businesses]);
+
   // ACTIONS
   const handleSaveConfig = () => {
       if (setSocialLinks) setSocialLinks(localSocials);
@@ -135,6 +150,77 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
   const handleResolveTicket = (id: string) => {
       if (onUpdateTicket) onUpdateTicket(id, { status: 'resolved' });
       onNotify("Ticket marcado como resuelto.");
+  };
+
+  // CONTROL ACTIONS
+  const handleApproveAd = (businessId: string, request: AdRequest) => {
+      // 1. Create Banner
+      const biz = businesses.find(b => b.id === businessId);
+      const newBanner: Banner = {
+          id: `ad_${request.id}`,
+          title: `Promoción: ${biz?.name}`,
+          imageUrl: biz?.mainImage || '',
+          type: 'business_campaign',
+          subtype: 'featured', 
+          format: 'card_vertical',
+          position: 'sidebar', 
+          start_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + request.durationDays * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'active',
+          visibility_rules: { roles: ['all'], plans: ['all'] },
+          views: 0,
+          clicks: 0,
+          linkedBusinessId: businessId,
+          spawnType: request.type === '1_day' ? '1_day' : request.type === '7_days' ? '7_days' : '14_days'
+      };
+
+      // 2. Update Business Request Status
+      onUpdateBusiness(businessId, {
+          adRequests: biz?.adRequests?.map(r => 
+              r.id === request.id ? { ...r, status: 'active' } : r
+          )
+      });
+
+      // 3. Add Banner to Global State
+      onUpdateBanners(prev => [newBanner, ...prev]);
+      
+      // 4. Create Invoice (Simulated)
+      const newInvoice: Invoice = {
+          id: `INV-AD-${request.id}`,
+          business_id: businessId,
+          business_name: systemConfig?.issuerDetails.businessName || 'ELEMEDE SL',
+          business_nif: systemConfig?.issuerDetails.nif || 'B12345678',
+          client_name: biz?.name || 'Cliente',
+          client_nif: biz?.nif || '',
+          date: new Date().toISOString().split('T')[0],
+          due_date: new Date().toISOString().split('T')[0],
+          base_amount: request.price / 1.21,
+          iva_rate: 21,
+          iva_amount: request.price - (request.price / 1.21),
+          irpf_rate: 0,
+          irpf_amount: 0,
+          total_amount: request.price,
+          status: 'paid', // Pre-paid
+          concept: `Campaña Publicidad ${request.durationDays} Días`,
+          quarter: Math.floor(new Date().getMonth() / 3) + 1
+      };
+      setInvoices(prev => [newInvoice, ...prev]);
+
+      onNotify(`Campaña aprobada y activada para ${biz?.name}`);
+  };
+
+  const handleRejectAd = (businessId: string, requestId: string) => {
+      onUpdateBusiness(businessId, {
+          adRequests: businesses.find(b => b.id === businessId)?.adRequests?.map(r => 
+              r.id === requestId ? { ...r, status: 'rejected' } : r
+          )
+      });
+      onNotify("Solicitud de campaña rechazada.");
+  };
+
+  const handleDeleteBanner = (bannerId: string) => {
+      onUpdateBanners(prev => prev.filter(b => b.id !== bannerId));
+      onNotify("Banner eliminado.");
   };
 
   // NEW STUDIO HANDLERS
@@ -414,13 +500,71 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
           </div>
       )}
 
+      {/* --- CONTROL CENTER (RESTORED FUNCTIONALITY) --- */}
       {activeTab === 'ad_control' && (
-          <div className="h-[800px] overflow-hidden flex flex-col">
-              <div className="mb-6 px-2"><h3 className="text-2xl font-black text-gray-900 uppercase italic">Autopista de Aprobación</h3></div>
-              <div className="flex-1 grid grid-cols-3 gap-6 overflow-hidden">
-                  <div className="bg-green-50/50 rounded-[2.5rem] border border-green-100 p-6"><h4 className="font-black text-green-800 uppercase tracking-widest">Vía Rápida</h4></div>
-                  <div className="bg-yellow-50/50 rounded-[2.5rem] border border-yellow-100 p-6"><h4 className="font-black text-yellow-800 uppercase tracking-widest">Revisión</h4></div>
-                  <div className="bg-red-50/50 rounded-[2.5rem] border border-red-100 p-6"><h4 className="font-black text-red-800 uppercase tracking-widest">Manual</h4></div>
+          <div className="space-y-8 animate-fade-in">
+              <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-black text-gray-900 uppercase italic">Autopista de Aprobación</h3>
+                  <span className="bg-orange-100 text-orange-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                      {pendingRequests.length} Solicitudes Pendientes
+                  </span>
+              </div>
+
+              {pendingRequests.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
+                      <p className="text-gray-400 font-bold uppercase text-xs tracking-widest">Todo limpio. No hay campañas por aprobar.</p>
+                  </div>
+              ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {pendingRequests.map(({ business, request }) => (
+                          <div key={request.id} className="bg-white p-6 rounded-[2.5rem] shadow-lg border border-gray-100 flex flex-col md:flex-row gap-6 relative overflow-hidden group">
+                              {/* Left: Info */}
+                              <div className="flex-1 space-y-2">
+                                  <div className="flex justify-between items-start">
+                                      <span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded uppercase tracking-widest">{request.type.replace('_', ' ')}</span>
+                                      <span className="text-[9px] font-black text-gray-400">{request.requestDate.split('T')[0]}</span>
+                                  </div>
+                                  <h4 className="font-black text-xl text-gray-900 leading-tight">{business.name}</h4>
+                                  <p className="text-xs text-gray-500 font-bold">Inversión: <span className="text-green-600">{request.price}€</span></p>
+                              </div>
+                              
+                              {/* Right: Actions */}
+                              <div className="flex md:flex-col gap-2 justify-center">
+                                  <button onClick={() => handleApproveAd(business.id, request)} className="bg-green-500 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-green-600 shadow-md flex items-center justify-center gap-2 transition-all">
+                                      <CheckCircle size={16} /> Aprobar
+                                  </button>
+                                  <button onClick={() => handleRejectAd(business.id, request.id)} className="bg-red-50 text-red-500 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-red-100 flex items-center justify-center gap-2 transition-all">
+                                      <XCircle size={16} /> Rechazar
+                                  </button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              )}
+
+              {/* ACTIVE BANNERS MANAGEMENT */}
+              <div className="pt-8 border-t border-gray-100">
+                  <h4 className="text-lg font-black text-gray-900 uppercase italic mb-6">Campañas Activas</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {banners.map(banner => (
+                          <div key={banner.id} className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm relative group">
+                              <button onClick={() => handleDeleteBanner(banner.id)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  <Trash2 size={12} />
+                              </button>
+                              <div className="h-24 rounded-xl overflow-hidden mb-3 relative">
+                                  <img src={banner.imageUrl} className="w-full h-full object-cover" />
+                                  <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[8px] font-bold px-2 py-1 uppercase w-full">
+                                      {banner.type === 'sector_campaign' ? 'Plataforma' : 'Negocio'} • {banner.subtype}
+                                  </div>
+                              </div>
+                              <h5 className="font-bold text-xs truncate">{banner.title}</h5>
+                              <div className="flex justify-between items-center mt-2 text-[9px] font-black text-gray-400 uppercase">
+                                  <span>👁 {banner.views}</span>
+                                  <span>🖱 {banner.clicks}</span>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
               </div>
           </div>
       )}
