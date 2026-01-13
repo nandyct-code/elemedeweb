@@ -120,7 +120,7 @@ export const App = () => {
             // Check for persistent session (Simple Token Simulation)
             const storedUserId = localStorage.getItem('elemede_session_user');
             if (storedUserId) {
-                const returningUser = data.users.find(any => any.id === storedUserId);
+                const returningUser = data.users.find((u: { id: string; }) => u.id === storedUserId);
                 if (returningUser) setCurrentUser(returningUser);
             }
 
