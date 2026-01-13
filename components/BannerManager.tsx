@@ -13,7 +13,6 @@ interface BannerManagerProps {
   userLocation?: { lat: number; lng: number } | null;
   maxBanners?: number;
   className?: string;
-  onViewBusiness?: (id: string) => void; // NEW PROP for redirection
 }
 
 // --- INTERFACE FOR HISTORY TRACKING ---
@@ -44,7 +43,7 @@ const TIMERS = {
 };
 
 export const BannerManager: React.FC<BannerManagerProps> = ({ 
-  banners, businesses, context, activeSectorId, userLocation, maxBanners = 1, className, onViewBusiness 
+  banners, businesses, context, activeSectorId, userLocation, maxBanners = 1, className 
 }) => {
   const [closedBanners, setClosedBanners] = useState<string[]>([]);
   const [activeOverlay, setActiveOverlay] = useState<Banner | null>(null);
@@ -182,18 +181,6 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
       setActiveOverlay(null);
   };
 
-  const handleOverlayAction = () => {
-      if (!activeOverlay) return;
-      
-      // REDIRECTION LOGIC
-      if (activeOverlay.linkedBusinessId && onViewBusiness) {
-          onViewBusiness(activeOverlay.linkedBusinessId);
-      }
-      
-      // Close overlay after action
-      handleClose(activeOverlay.id);
-  };
-
   if (activeBanners.length === 0 && !activeOverlay) return null;
 
   return (
@@ -203,7 +190,6 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
           <MarketingOverlay 
               banner={activeOverlay} 
               onClose={() => handleClose(activeOverlay.id)} 
-              onInterest={handleOverlayAction} // Pass the redirection handler
           />
       )}
 
@@ -217,11 +203,6 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
                 key={banner.id} 
                 banner={banner} 
                 onClose={() => handleClose(banner.id)}
-                onInteract={() => {
-                    if (banner.linkedBusinessId && onViewBusiness) {
-                        onViewBusiness(banner.linkedBusinessId);
-                    }
-                }}
             />
           );
       })}

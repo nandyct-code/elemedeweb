@@ -461,14 +461,7 @@ export const App = () => {
         socialLinks={socialLinks} 
       />
       
-      {/* BANNER MANAGER POP-UPS */}
-      <BannerManager 
-        banners={banners} 
-        businesses={businesses} 
-        context="footer_sticky" 
-        userLocation={userLocation} 
-        onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
-      />
+      <BannerManager banners={banners} businesses={businesses} context="footer_sticky" userLocation={userLocation} />
       
       {/* UPDATED: Pass location and business data to NotificationCenter for geofencing */}
       <NotificationCenter 
@@ -565,7 +558,6 @@ export const App = () => {
                         context="home" 
                         userLocation={userLocation}
                         maxBanners={1}
-                        onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
                     />
                 </div>
             </section>
@@ -618,16 +610,7 @@ export const App = () => {
                 <div className="space-y-8">
                     <h3 className="text-3xl font-brand font-black text-gray-900 text-center uppercase italic">Los Mejores en tu Radio</h3>
                     <BusinessShowcase businesses={filteredSectorBusinesses} userLocation={userLocation} currentRadius={MAX_SYSTEM_RADIUS} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} currentUser={currentUser} onToggleFavorite={(id) => { if (!currentUser) return setIsAuthModalOpen(true); const newFavs = currentUser.favorites?.includes(id) ? currentUser.favorites.filter(f => f !== id) : [...(currentUser.favorites || []), id]; handleUpdateUser({ ...currentUser, favorites: newFavs }); }} />
-                    <div className="max-w-4xl mx-auto">
-                        <BannerManager 
-                            businesses={businesses} 
-                            banners={banners} 
-                            context="business_list" 
-                            userLocation={userLocation} 
-                            activeSectorId={activeSector} 
-                            onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)}
-                        />
-                    </div>
+                    <div className="max-w-4xl mx-auto"><BannerManager businesses={businesses} banners={banners} context="business_list" userLocation={userLocation} activeSectorId={activeSector} /></div>
                 </div>
 
                 <NewSubscribersBanner businesses={businesses.filter(b => b.sectorId === activeSector)} sectorLabel={SECTORS.find(s => s.id === activeSector)?.label || ''} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} />
