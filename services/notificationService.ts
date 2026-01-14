@@ -1,5 +1,5 @@
 
-import { EmailTemplateType, NotificationLog, EmailTemplate } from '../types';
+import { EmailTemplateType, NotificationLog } from '../types';
 import { MOCK_EMAIL_TEMPLATES } from '../constants';
 import { supabase } from './supabase';
 
@@ -43,6 +43,8 @@ export const getNotificationLogs = async (): Promise<NotificationLog[]> => {
 };
 
 // Main function to trigger an email (Persists to DB)
+// NOTE: In Supabase, you should set up a Database Trigger or Edge Function
+// that listens to INSERTs on 'notification_logs' and actually sends the email via Resend/SendGrid.
 export const sendNotification = async (
   type: EmailTemplateType,
   recipient: string,
@@ -52,61 +54,46 @@ export const sendNotification = async (
   let templateSubject = `Notificación: ${type}`;
   let templateBody = JSON.stringify(data);
 
-  // 1. Try to fetch real template from DB
-  if (supabase) {
-      const { data: dbTemplate } = await supabase
-          .from('notification_templates')
-          .select('*')
-          .eq('type', type)
-          .single();
-      
-      if (dbTemplate) {
-          templateSubject = dbTemplate.subject;
-          templateBody = dbTemplate.body;
-      } else {
-          // Fallback to constants if DB fetch fails or not found yet
-          const localTemplate = MOCK_EMAIL_TEMPLATES.find(t => t.type === type);
-          if (localTemplate) {
-              templateSubject = localTemplate.subject;
-              templateBody = localTemplate.body;
-          }
-      }
-  } else {
-      // Offline fallback
-      const localTemplate = MOCK_EMAIL_TEMPLATES.find(t => t.type === type);
-      if (localTemplate) {
-          templateSubject = localTemplate.subject;
-          templateBody = localTemplate.body;
-      }
+  // 1. Resolve Template (Mock or DB if you implemented a templates table)
+  // For production speed, we use constants, but you can fetch from 'email_templates' table.
+  const localTemplate = MOCK_EMAIL_TEMPLATES.find(t => t.type === type);
+  if (localTemplate) {
+      templateSubject = localTemplate.subject;
+      templateBody = localTemplate.body;
   }
   
   // 2. Process variables
   const finalSubject = processTemplate(templateSubject, data);
-  const finalBody = processTemplate(templateBody, data);
 
-  // 3. Log to DB (The "Sending" act)
+  // 3. Log to DB (The "Sending" act trigger)
   if (supabase) {
       const { error } = await supabase.from('notification_logs').insert([{
           recipient,
           template_type: type,
           subject_sent: finalSubject,
-          status: 'sent', // In a real app with SendGrid, this would be 'queued' then updated
+          status: 'queued', // 'queued' tells the backend worker to pick this up
           trigger_source: triggerSource
       }]);
       
-      if (error) console.error("Error logging notification:", error);
+      if (error) {
+          console.error("Error logging notification:", error);
+      } else {
+          console.log(`[MAILER DB] Queued '${type}' to ${recipient}`);
+      }
+  } else {
+      console.warn("[MAILER] Supabase offline. Email not queued.");
   }
 
+  // Return a mock log entry for immediate UI feedback if needed
   const logEntry: NotificationLog = {
-    id: Math.random().toString(36).substr(2, 9),
+    id: 'temp_' + Date.now(),
     timestamp: new Date().toLocaleTimeString(),
     recipient: recipient,
     type: type,
     subject: finalSubject,
-    status: 'sent',
+    status: 'queued',
     trigger: triggerSource
   };
 
-  console.log(`[MAILER DB] Logged '${type}' to ${recipient}`);
   return logEntry;
 };

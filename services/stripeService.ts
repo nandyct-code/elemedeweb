@@ -16,10 +16,10 @@ interface FinancialResult {
   taxRate: number;
 }
 
-// STRIPE SERVICE (PHASE 3: SERVER-SIDE INTEGRATION)
+// STRIPE SERVICE (PRODUCTION READY)
 export const stripeService = {
   
-  // Utility
+  // Utility: Calculate Taxes locally for UI display
   calculateFinancials: (baseAmount: number, taxRate: number = 21): FinancialResult => {
     const taxAmount = baseAmount * (taxRate / 100);
     const total = baseAmount + taxAmount;
@@ -31,105 +31,102 @@ export const stripeService = {
     };
   },
 
-  // 1. CREATE CUSTOMER (Calls Edge Function)
+  // 1. CREATE CUSTOMER
+  // Calls Supabase Edge Function: 'stripe-create-customer'
   createCustomer: async (email: string, name: string, paymentMethod: PaymentMethod): Promise<{ customerId: string, last4: string, brand: string }> => {
-    if (supabase) {
-        // CALL EDGE FUNCTION 'stripe-create-customer'
+    if (!supabase) throw new Error("Supabase client not initialized");
+
+    try {
         const { data, error } = await supabase.functions.invoke('stripe-create-customer', {
             body: { email, name, paymentMethod }
         });
 
-        if (!error && data) {
-            return data;
-        } else {
-            console.warn("Edge Function failed (Likely not deployed). Falling back to mock for demo.");
-        }
-    }
+        if (error) throw new Error(error.message || "Error creating Stripe customer");
+        if (!data || !data.customerId) throw new Error("Invalid response from payment server");
 
-    // FALLBACK MOCK (If function not deployed)
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          customerId: `cus_mock_${Math.random().toString(36).substr(2, 9)}`,
-          last4: paymentMethod.number.slice(-4),
-          brand: paymentMethod.number.startsWith('4') ? 'Visa' : 'MasterCard'
-        });
-      }, 1500);
-    });
+        return {
+            customerId: data.customerId,
+            last4: data.last4 || 'xxxx',
+            brand: data.brand || 'Unknown'
+        };
+    } catch (err: any) {
+        console.error("Stripe Create Customer Error:", err);
+        throw new Error("No se pudo crear el cliente de pago. Verifique los datos de la tarjeta.");
+    }
   },
 
-  // 2. PROCESS PAYMENT (Calls Edge Function)
+  // 2. PROCESS ONE-TIME PAYMENT
+  // Calls Supabase Edge Function: 'stripe-payment'
   processPayment: async (
     customerId: string | undefined, 
     amount: number, 
     description: string
   ): Promise<{ success: boolean; transactionId: string; invoiceId: string }> => {
-    if (supabase) {
-        const { data, error } = await supabase.functions.invoke('stripe-charge', {
-            body: { customerId, amount, description }
+    if (!supabase) throw new Error("Supabase client not initialized");
+    if (!customerId) throw new Error("Customer ID is required for payment");
+
+    try {
+        const { data, error } = await supabase.functions.invoke('stripe-payment', {
+            body: { 
+                customerId, 
+                amount: Math.round(amount * 100), // Stripe expects cents
+                description,
+                currency: 'eur' 
+            }
         });
 
-        if (!error && data) return data;
+        if (error) throw new Error(error.message);
+        
+        return {
+            success: true,
+            transactionId: data.paymentIntentId,
+            invoiceId: data.invoiceId || `INV-${Date.now()}` // Fallback ID if not provided by backend logic
+        };
+    } catch (err: any) {
+        console.error("Payment Processing Error:", err);
+        throw new Error("El pago ha sido rechazado o ha fallado la conexión.");
     }
-
-    // FALLBACK MOCK
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          transactionId: `ch_${Math.random().toString(36).substr(2, 18)}`,
-          invoiceId: `in_${Math.random().toString(36).substr(2, 18)}`
-        });
-      }, 2000);
-    });
   },
 
-  // 3. CREATE SUBSCRIPTION (Calls Edge Function)
+  // 3. CREATE SUBSCRIPTION
+  // Calls Supabase Edge Function: 'stripe-subscription'
   createSubscription: async (customerId: string, priceId: string): Promise<{ subscriptionId: string; status: string; nextBilling: string }> => {
-    if (supabase) {
+    if (!supabase) throw new Error("Supabase client not initialized");
+
+    try {
         const { data, error } = await supabase.functions.invoke('stripe-subscription', {
             body: { customerId, priceId }
         });
-        if (!error && data) return data;
-    }
 
-    // FALLBACK MOCK
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const nextMonth = new Date();
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-        resolve({
-          subscriptionId: `sub_${Math.random().toString(36).substr(2, 14)}`,
-          status: 'active',
-          nextBilling: nextMonth.toISOString().split('T')[0]
-        });
-      }, 1000);
-    });
+        if (error) throw new Error(error.message);
+
+        return {
+            subscriptionId: data.subscriptionId,
+            status: data.status,
+            nextBilling: data.currentPeriodEnd // Should be ISO String from backend
+        };
+    } catch (err: any) {
+        console.error("Subscription Error:", err);
+        throw new Error("No se pudo activar la suscripción recurrente.");
+    }
   },
 
-  // 4. SERVER-SIDE RECURRING BILLING SIMULATION
-  // In production, this would be a scheduled CRON job on Supabase or an external worker.
+  // 4. SERVER-SIDE BILLING TRIGGER
+  // In a real scenario, this is just a helper to trigger a backend job manually from the Admin Dashboard
   processRecurringBilling: async (
       businesses: Business[], 
       subscriptionPacks: SubscriptionPack[]
   ): Promise<any> => {
-      return new Promise((resolve) => {
-          setTimeout(() => {
-            const today = new Date();
-            const newInvoices: Invoice[] = [];
-            const logs: string[] = [];
+      if (!supabase) return { logs: ["Offline mode"] };
 
-            // Mock Logic for Demo UI Feedback
-            businesses.forEach(biz => {
-                if (biz.stripeConnection?.nextBillingDate && biz.status === 'active') {
-                    const billingDate = new Date(biz.stripeConnection.nextBillingDate);
-                    if (billingDate <= today) {
-                        logs.push(`[SERVER] Procesando cobro a ${biz.name}... OK.`);
-                    }
-                }
-            });
-            resolve({ updatedBusinesses: businesses, newInvoices, logs });
-          }, 3000); 
-      });
+      // Trigger the billing cron job manually via Edge Function
+      const { data, error } = await supabase.functions.invoke('trigger-billing-cycle', {});
+      
+      if (error) return { logs: ["Error triggering billing cycle: " + error.message] };
+      return { 
+          logs: ["[SERVER] Ciclo de facturación iniciado en segundo plano.", `Job ID: ${data?.jobId}`],
+          updatedBusinesses: businesses, // In reality, data would be refreshed via websocket/subscription
+          newInvoices: [] 
+      };
   }
 };
