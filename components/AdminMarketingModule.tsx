@@ -199,16 +199,16 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
               if (biz.mainImage && !forceAiGeneration && !useCustomPrompt) {
                   imageToUse = biz.mainImage;
               } 
-              // Priority 2: Generate AI Image
+              // Priority 2: Generate AI Image (STRICT QUALITY)
               else {
-                  const basePrompt = useCustomPrompt ? imagePrompt : `High quality food photography of ${biz.sectorId.replace('_',' ')}, delicious, cinematic lighting, showcasing the products of a bakery named ${biz.name}`;
+                  // Enhanced Prompt Logic
+                  const basePrompt = useCustomPrompt ? imagePrompt : `High quality, appetizing food photography of ${biz.sectorId.replace('_',' ')}, showcasing the specialties of ${biz.name}, delicious details, professional lighting, award winning photo`;
+                  
                   const generatedUrl = await generateBannerImage(basePrompt);
                   if (generatedUrl) {
                       imageToUse = generatedUrl;
                   } else {
-                      // Fallback if AI fails
-                      imageToUse = biz.mainImage || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=800';
-                      onNotify("⚠️ Fallo en IA. Usando imagen de respaldo.");
+                      throw new Error("No se pudo generar la imagen IA. Verifique su API Key.");
                   }
               }
           } 
@@ -219,9 +219,10 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
               cta = 'Explorar';
 
               // Always Generate AI for Platform (unless custom prompt overrides)
+              // Highly detailed prompt construction
               const contextPrompt = platformType === 'season' 
-                  ? `Festive food photography for ${seasonName}, pastries, sweets, celebration, 4k, cinematic`
-                  : `Delicious artisan ${targetSector.replace('_',' ')} close up, professional food photography, 4k`;
+                  ? `Luxurious and festive food photography for ${seasonName} holiday season, pastries, sweets, elegant decoration, 8k, cinematic, warm lighting`
+                  : `Delicious artisan ${targetSector.replace('_',' ')}, close up macro shot, professional food photography, 8k, vibrant colors, michelin star style`;
               
               const finalPrompt = useCustomPrompt && imagePrompt ? imagePrompt : contextPrompt;
               
@@ -229,8 +230,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
               if (generatedUrl) {
                   imageToUse = generatedUrl;
               } else {
-                  imageToUse = 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=800';
-                  onNotify("⚠️ Fallo en IA. Usando imagen de respaldo.");
+                  throw new Error("No se pudo generar la imagen IA. Verifique su API Key.");
               }
           }
 
@@ -242,11 +242,11 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
               type: studioMode === 'business' ? 'business_campaign' : 'sector_campaign',
               linkedBusinessId: studioMode === 'business' ? selectedBusinessId : undefined
           });
-          onNotify("✨ Diseño generado con éxito. Revisa la vista previa.");
+          onNotify("✨ Diseño de alta fidelidad generado con éxito.");
 
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
-          onNotify("❌ Error generando la campaña.");
+          onNotify(`❌ Error: ${e.message || "Fallo en generación"}`);
       } finally {
           setIsGeneratingCampaign(false);
       }
@@ -499,7 +499,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
                           disabled={isGeneratingCampaign} 
                           className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-600 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                       >
-                          {isGeneratingCampaign ? 'Diseñando...' : 'Generar Banner'}
+                          {isGeneratingCampaign ? 'Diseñando (Puede tardar 10s)...' : 'Generar Banner HQ'}
                       </button>
                   </div>
               </div>
