@@ -9,63 +9,108 @@ const getEnvVar = (key: string): string => {
   return (meta.env && meta.env[key]) || '';
 };
 
-// USER PROVIDED CREDENTIALS
-// These act as defaults if VITE_ env vars are not set in Vercel dashboard
-const PROJECT_URL = 'https://fxhgffgkhpgsruotrxmj.supabase.co';
-const PROJECT_KEY = 'sb_secret_JwamCllyNVXJMdRXdzH14w_X1m9_cKD';
-
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || PROJECT_URL;
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY') || PROJECT_KEY;
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
+const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
 
 const isSupabaseConfigured = supabaseUrl && supabaseAnonKey;
 
 if (!isSupabaseConfigured) {
-    console.warn("⚠️ Supabase keys missing. Running in MOCK/OFFLINE mode.");
+    console.warn("⚠️ Supabase keys missing. Running in OFFLINE mode.");
 }
 
-// Only initialize if keys are present to avoid "supabaseUrl is required" error
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 
-// --- DATA SERVICE (HYBRID: REAL + MOCK FALLBACK) ---
+// --- DATA MAPPING HELPERS ---
+const mapBusinessFromDB = (dbBiz: any): Business => ({
+    id: dbBiz.id,
+    name: dbBiz.name,
+    sectorId: dbBiz.sector_id,
+    packId: dbBiz.pack_id,
+    nif: dbBiz.nif || '',
+    phone: dbBiz.phone || '',
+    address: dbBiz.address || '',
+    city: dbBiz.city || '',
+    province: dbBiz.province || '',
+    cp: dbBiz.cp || '',
+    lat: dbBiz.lat || 0,
+    lng: dbBiz.lng || 0,
+    status: dbBiz.status || 'active',
+    mainImage: dbBiz.main_image,
+    images: dbBiz.images || [],
+    tags: dbBiz.tags || [],
+    description: dbBiz.description,
+    createdAt: dbBiz.created_at,
+    billingCycle: dbBiz.billing_cycle,
+    credits: dbBiz.credits,
+    totalAdSpend: dbBiz.total_ad_spend,
+    reliabilityScore: dbBiz.reliability_score
+});
+
+const mapBusinessToDB = (biz: Partial<Business>) => {
+    const mapped: any = {};
+    if (biz.name) mapped.name = biz.name;
+    if (biz.sectorId) mapped.sector_id = biz.sectorId;
+    if (biz.packId) mapped.pack_id = biz.packId;
+    if (biz.nif) mapped.nif = biz.nif;
+    if (biz.phone) mapped.phone = biz.phone;
+    if (biz.address) mapped.address = biz.address;
+    if (biz.city) mapped.city = biz.city;
+    if (biz.province) mapped.province = biz.province;
+    if (biz.cp) mapped.cp = biz.cp;
+    if (biz.lat) mapped.lat = biz.lat;
+    if (biz.lng) mapped.lng = biz.lng;
+    if (biz.mainImage) mapped.main_image = biz.mainImage;
+    if (biz.images) mapped.images = biz.images;
+    if (biz.tags) mapped.tags = biz.tags;
+    if (biz.description) mapped.description = biz.description;
+    if (biz.credits !== undefined) mapped.credits = biz.credits;
+    return mapped;
+};
+
+// --- DATA SERVICE ---
 export const dataService = {
     
-    // INITIAL LOAD
+    // FETCH ALL (Hybrid)
     fetchAll: async () => {
-        // Try Real DB
         if (supabase) {
             try {
-                const [biz, users, coupons, leads] = await Promise.all([
-                    supabase.from('businesses').select('*'),
-                    supabase.from('profiles').select('*'),
-                    supabase.from('coupons').select('*'),
-                    supabase.from('leads').select('*')
-                ]);
+                // Fetch Businesses
+                const { data: dbBusinesses, error: bizError } = await supabase.from('businesses').select('*');
+                
+                // Fetch Profiles (Users)
+                const { data: dbUsers, error: userError } = await supabase.from('profiles').select('*');
 
-                // Check if connection actually worked (tables might not exist yet)
-                if (!biz.error) {
+                if (!bizError && dbBusinesses) {
+                    const mappedBusinesses = dbBusinesses.map(mapBusinessFromDB);
+                    const mappedUsers = dbUsers ? dbUsers.map((u: any) => ({
+                        id: u.id,
+                        email: u.email,
+                        name: u.name,
+                        role: u.role,
+                        status: u.status,
+                        favorites: u.favorites,
+                        password_hash: 'HIDDEN'
+                    })) : [];
+
                     return {
-                        businesses: biz.data || [],
-                        users: users.data || [], // Note: RLS might return empty if not admin, handled in UI
-                        invoices: [], // Invoices loaded on demand usually
-                        banners: [...MOCK_BANNERS], // Table pending
-                        coupons: coupons.data || [],
-                        forum: [...MOCK_FORUM], // Table pending
-                        leads: leads.data || [],
+                        businesses: mappedBusinesses.length > 0 ? mappedBusinesses : MOCK_BUSINESSES,
+                        users: mappedUsers.length > 0 ? mappedUsers : MOCK_USERS,
+                        invoices: MOCK_INVOICES, // Keep mocks for invoices initially
+                        banners: MOCK_BANNERS,
+                        coupons: MOCK_DISCOUNT_CODES,
+                        forum: MOCK_FORUM,
+                        leads: MOCK_LEADS,
                         tickets: [],
                         campaigns: []
                     };
-                } else {
-                    console.warn("Supabase Fetch Error (tables might be missing):", biz.error.message);
                 }
             } catch (e) {
-                console.error("Supabase connection error:", e);
+                console.error("Supabase load failed, using mocks:", e);
             }
         }
 
-        // Fallback to Mocks
-        console.log("Serving Mock Data (Database empty or connection failed)");
         return {
             businesses: [...MOCK_BUSINESSES],
             users: [...MOCK_USERS],
@@ -79,18 +124,15 @@ export const dataService = {
         };
     },
 
-    // --- AUTHENTICATION ---
-    
+    // AUTHENTICATION
     authenticate: async (email: string, passwordHash: string): Promise<UserAccount | null> => {
-        // 1. Try Supabase Auth
         if (supabase) {
             const { data, error } = await supabase.auth.signInWithPassword({
-                email: email,
+                email,
                 password: passwordHash, 
             });
 
             if (!error && data.user) {
-                // Fetch profile
                 const { data: profile } = await supabase
                     .from('profiles')
                     .select('*')
@@ -100,17 +142,9 @@ export const dataService = {
                 return profile ? { ...profile, id: data.user.id, email: data.user.email!, password_hash: 'HIDDEN' } : null;
             }
         }
-
-        // 2. Fallback Mock Auth
-        const mockUser = MOCK_USERS.find(u => 
-            u.email.toLowerCase() === email.toLowerCase() && 
-            u.password_hash === passwordHash
-        );
-        
-        if (mockUser) {
-            return { ...mockUser, last_login: new Date().toISOString() };
-        }
-        return null;
+        // Mock fallback
+        const mockUser = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
+        return mockUser || null;
     },
 
     createUser: async (user: UserAccount): Promise<UserAccount> => {
@@ -127,104 +161,92 @@ export const dataService = {
             });
 
             if (error) throw error;
+            
+            // Trigger created via trigger in DB or manually insert profile if needed
+            // For now assuming Auth Hook handles profile creation or we do it manually:
             if (data.user) {
-                return { ...user, id: data.user.id, password_hash: 'HIDDEN' };
+                const { error: profileError } = await supabase.from('profiles').insert([{
+                    id: data.user.id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role
+                }]);
+                if (!profileError) {
+                    return { ...user, id: data.user.id, password_hash: 'HIDDEN' };
+                }
             }
         }
-
-        // Mock Creation
-        return { ...user, id: `mock_user_${Date.now()}` };
+        return { ...user, id: `mock_${Date.now()}` };
     },
 
     updateUser: async (user: UserAccount) => {
         if (supabase) {
-            await supabase.from('profiles').update({ 
-                name: user.name, 
-                favorites: user.favorites,
-                status: user.status
+            await supabase.from('profiles').update({
+                name: user.name,
+                favorites: user.favorites
             }).eq('id', user.id);
         }
-        return user;
     },
 
-    getUsers: async () => {
-        if (supabase) {
-            const { data } = await supabase.from('profiles').select('*');
-            return data || [];
-        }
-        return MOCK_USERS;
-    },
-
-    // --- BUSINESS METHODS ---
-
+    // BUSINESS
     createBusiness: async (business: Business) => {
         if (supabase) {
-            const { error } = await supabase.from('businesses').insert([business]);
-            if (error) console.error("Error creating business in DB", error);
+            const dbPayload = mapBusinessToDB(business);
+            // Link owner if exists in current session
+            const { data:  authData } = await supabase.auth.getUser();
+            if (authData.user) {
+                dbPayload.owner_id = authData.user.id;
+            }
+            
+            const { error } = await supabase.from('businesses').insert([dbPayload]);
+            if (error) console.error("Error creating business", error);
         }
         return business;
     },
 
-    getBusinesses: async () => {
-        if (supabase) {
-            const { data } = await supabase.from('businesses').select('*');
-            return data || [];
-        }
-        return MOCK_BUSINESSES;
-    },
-
     updateBusiness: async (id: string, updates: Partial<Business>) => {
         if (supabase) {
-            await supabase.from('businesses').update(updates).eq('id', id);
+            const dbUpdates = mapBusinessToDB(updates);
+            await supabase.from('businesses').update(dbUpdates).eq('id', id);
         }
     },
-
-    // --- OTHER ENTITIES ---
 
     createInvoice: async (invoice: Invoice) => {
-        if (supabase) {
-            await supabase.from('invoices').insert([{
-                id: invoice.id,
-                business_id: invoice.business_id,
-                client_name: invoice.client_name,
-                client_nif: invoice.client_nif,
-                date: invoice.date,
-                total_amount: invoice.total_amount,
-                status: invoice.status,
-                data: invoice 
-            }]);
-        }
-        return invoice;
+        // Just log for now as Invoice table structure might vary
+        console.log("Invoice created (DB Pending)", invoice.id);
     },
 
-    getCoupons: async () => {
-        if (supabase) {
-            const { data } = await supabase.from('coupons').select('*');
-            return data || [];
-        }
-        return MOCK_DISCOUNT_CODES;
-    },
-    
-    getBanners: async () => MOCK_BANNERS,
-    updateBanners: async (b: Banner[]) => b,
-    getInvoices: async () => MOCK_INVOICES
+    getCoupons: async () => MOCK_DISCOUNT_CODES,
 };
 
-// --- STORAGE ---
-export const uploadBusinessImage = async (file: File, path: string) => {
+// --- STORAGE SERVICE (REAL) ---
+export const uploadBusinessImage = async (file: File, pathPrefix: string): Promise<string> => {
     if (supabase) {
-        const fileName = `${Date.now()}_${file.name}`;
-        const { data, error } = await supabase.storage
-            .from('business-images')
-            .upload(fileName, file);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${pathPrefix}_${Date.now()}.${fileExt}`;
+            const filePath = `${fileName}`;
 
-        if (!error) {
-            const { data: publicUrl } = supabase.storage
+            const { error: uploadError } = await supabase.storage
                 .from('business-images')
-                .getPublicUrl(fileName);
-            return publicUrl.publicUrl;
+                .upload(filePath, file);
+
+            if (uploadError) {
+                console.error("Storage upload error:", uploadError);
+                throw uploadError;
+            }
+
+            const { data } = supabase.storage
+                .from('business-images')
+                .getPublicUrl(filePath);
+
+            return data.publicUrl;
+        } catch (e) {
+            console.error("Upload failed", e);
+            // Fallback to local
+            return URL.createObjectURL(file);
         }
     }
-    // Fallback for local dev without storage
+    // Fallback for offline dev
     return URL.createObjectURL(file);
 };

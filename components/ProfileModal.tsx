@@ -5,6 +5,7 @@ import { getSectorImage, auditImageQuality, generateMarketingKit } from '../serv
 import { SECTORS, SUBSCRIPTION_PACKS, BANNER_1_DAY_PRICE, BANNER_7_DAYS_PRICE, BANNER_14_DAYS_PRICE, MICRO_PAYMENT_AMOUNT, MOCK_DISCOUNT_CODES, MOCK_LEADS, LEAD_UNLOCK_PRICE, PUSH_NOTIFICATION_PRICE, CREDIT_PACKS, ACTION_COSTS } from '../constants';
 import { sendNotification } from '../services/notificationService';
 import { stripeService } from '../services/stripeService';
+import { uploadBusinessImage } from '../services/supabase'; // IMPORT REAL UPLOAD
 import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X } from 'lucide-react';
 
 const adPrices: Record<AdRequestType, { base: number, final: number }> = {
@@ -175,199 +176,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       }
   };
 
-  // --- CARD UPDATE LOGIC ---
-  const handleUpdateCard = () => {
-      if (!business) return;
-      if (newCardData.number.length < 15 || !newCardData.expiry || !newCardData.cvc) {
-          return alert("Por favor revisa los datos de la tarjeta.");
-      }
-
-      setIsSavingCard(true);
-      setTimeout(() => {
-          onUpdateBusiness(business.id, {
-              stripeConnection: {
-                  ...business.stripeConnection,
-                  status: 'connected',
-                  last4: newCardData.number.slice(-4),
-                  cardBrand: newCardData.number.startsWith('4') ? 'Visa' : 'MasterCard',
-              }
-          });
-          setIsSavingCard(false);
-          setIsEditingCard(false);
-          setNewCardData({ number: '', expiry: '', cvc: '', name: '' });
-          alert("✅ Método de pago actualizado correctamente.");
-      }, 1500);
-  };
-
-  // --- CANCELLATION LOGIC ---
-  const handleConfirmCancellation = () => {
-      if (!business) return;
-      
-      // Calculate end date (simulated 30 days from now)
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 30);
-      const endDateStr = endDate.toISOString().split('T')[0];
-
-      // Update Business: Set cancellation date AND clear ads
-      onUpdateBusiness(business.id, {
-          scheduledCancellationDate: endDate.toISOString(),
-          adRequests: [], // Cancel all ads
-          totalAdSpend: 0, // Reset ad rank power
-          // We DO NOT set status to 'suspended' yet, user retains access until date
-      });
-
-      setCancellationDate(endDateStr);
-      setShowCancelConfirm(false);
-      
-      sendNotification('exit', user.email, { name: user.name, endDate: endDateStr });
-  };
-
-  // --- STORY LOGIC (ESCAPARATE EFÍMERO + SWEET REELS) ---
-  const handleUploadStory = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && business) {
-          
-          // VIDEO CREDIT CHECK
-          if (storyMediaType === 'video') {
-              if (credits < ACTION_COSTS.STORY_VIDEO) {
-                  alert(`Saldo insuficiente. Subir un Sweet Reel cuesta ${ACTION_COSTS.STORY_VIDEO} créditos. Recarga en la sección de Negocio.`);
-                  return;
-              }
-          }
-
-          setIsUploadingStory(true);
-          
-          // Use Object URL to avoid Base64
-          const objectUrl = URL.createObjectURL(file);
-          
-          // Only 1 story per day allowed for simplicity in this version, unless boosted
-          const newStory: BusinessStory = {
-              id: `st_${Date.now()}`,
-              timestamp: new Date().toISOString(),
-              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
-              type: 'fresh_batch',
-              text: storyText || (storyMediaType === 'video' ? '¡Sweet Reel del día!' : '¡Novedad del día!'),
-              imageUrl: objectUrl, // Blob URL
-              mediaType: storyMediaType
-          };
-
-          // Deduct credits if video
-          const newCredits = storyMediaType === 'video' ? credits - ACTION_COSTS.STORY_VIDEO : credits;
-
-          onUpdateBusiness(business.id, {
-              stories: [newStory, ...(business.stories || [])].slice(0, 5), // Keep last 5 history
-              credits: newCredits
-          });
-          
-          setIsUploadingStory(false);
-          setStoryText('');
-          alert(storyMediaType === 'video' ? "🎥 ¡Sweet Reel subido! Se han descontado 2 créditos." : "✨ Tu escaparate efímero se ha actualizado.");
-      }
-  };
-
-  // --- HANDLERS (UPDATED WITH CREDITS) ---
-
-  const handleUpdateBusinessInfo = () => {
-      if (!business) return;
-      onUpdateBusiness(business.id, { ...editFormData, openingHours });
-      alert("Ficha de negocio actualizada correctamente. Los cambios son visibles para los clientes inmediatamente.");
-  };
-
-  // ... (Other handlers preserved: handleBuyExtraLocation, etc.) ...
-  const handleBuyExtraLocation = () => {
-      if (!business || !currentPack) return;
-      const price = currentPack.extraLocationPrice;
-      
-      if (confirm(`AÑADIR SEDE EXTRA:\n\nEsto añadirá una nueva ubicación a tu perfil.\nCoste: ${price}€/mes añadidos a tu suscripción.\n\n¿Confirmar y procesar cobro proporcional de este mes?`)) {
-          // Simulate Stripe Charge via Invoice
-          const newInvoice: Invoice = {
-              id: `INV-SEDE-${Date.now()}`,
-              business_id: business.id,
-              business_name: 'ELEMEDE SL',
-              business_nif: 'B12345678',
-              client_name: business.name,
-              client_nif: business.nif,
-              date: new Date().toISOString().split('T')[0],
-              due_date: new Date().toISOString().split('T')[0],
-              base_amount: price / 1.21,
-              iva_rate: 21,
-              iva_amount: price - (price / 1.21),
-              irpf_rate: 0,
-              irpf_amount: 0,
-              total_amount: price,
-              status: 'paid',
-              concept: `Alta Sede Adicional (Prorrateo) - Plan ${currentPack.label}`,
-              quarter: Math.floor(new Date().getMonth() / 3) + 1
-          };
-          if (onGenerateInvoice) onGenerateInvoice(newInvoice);
-
-          // Add empty location slot
-          const newSede: AddressDetails = {
-              calle: 'Nueva Dirección (Editar)',
-              cp: '',
-              ciudad: business.city,
-              provincia: business.province,
-              lat: business.lat + 0.01, // Offset slightly
-              lng: business.lng + 0.01
-          };
-
-          const updatedSedes = [...(business.direccionesAdicionales || []), newSede];
-          onUpdateBusiness(business.id, { direccionesAdicionales: updatedSedes });
-          setEditFormData(prev => ({ ...prev, direccionesAdicionales: updatedSedes })); // Sync local form
-          
-          alert("✅ Sede añadida y suscripción actualizada. Edita los detalles de la nueva dirección abajo.");
-      }
-  };
-
-  const handleUpdateSede = (index: number, field: keyof AddressDetails, value: string) => {
-      const currentSedes = [...(editFormData.direccionesAdicionales || [])];
-      if (currentSedes[index]) {
-          currentSedes[index] = { ...currentSedes[index], [field]: value };
-          setEditFormData({ ...editFormData, direccionesAdicionales: currentSedes });
-      }
-  };
-
-  const handleDeleteSede = (index: number) => {
-      if(confirm("¿Eliminar esta sede? Dejarás de pagar por ella en el próximo ciclo de facturación.")) {
-          const currentSedes = [...(editFormData.direccionesAdicionales || [])];
-          const newSedes = currentSedes.filter((_, i) => i !== index);
-          setEditFormData({ ...editFormData, direccionesAdicionales: newSedes });
-          // Also update parent immediately for visual feedback
-          if(business) onUpdateBusiness(business.id, { direccionesAdicionales: newSedes });
-      }
-  };
-
-  const handleToggleTag = (tag: string) => {
-    if (!business) return;
-    const currentTags = business.tags || [];
-    
-    if (currentTags.includes(tag)) {
-      onUpdateBusiness(business.id, { tags: currentTags.filter(t => t !== tag) });
-    } else {
-      if (currentTags.length < limits.tags) {
-        onUpdateBusiness(business.id, { tags: [...currentTags, tag] });
-      } else {
-        alert(`🔒 Límite de etiquetas alcanzado (${limits.tags}) para tu plan ${currentPack?.label}. Actualiza a un plan superior para añadir más.`);
+  // --- IMAGE UPLOAD LOGIC (REAL) ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && business) {
+      setIsUploading(true);
+      try {
+          // PHASE 2: Upload to Supabase Storage
+          const publicUrl = await uploadBusinessImage(file, `biz_${business.id}`);
+          await handleAddImage(publicUrl);
+      } catch (error) {
+          console.error(error);
+          alert("Error subiendo imagen.");
+      } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
       }
     }
-  };
-
-  const handleSetMainImage = (url: string) => {
-    if (!business) return;
-    onUpdateBusiness(business.id, { mainImage: url });
-  };
-
-  const handleDeleteImage = (url: string) => {
-    if (!business || !business.images) return;
-    if (business.images.length <= 1 && business.images.includes(url)) {
-        return alert("Debes tener al menos una imagen en tu galería.");
-    }
-    const newImages = business.images.filter(img => img !== url);
-    const updates: Partial<Business> = { images: newImages };
-    if (business.mainImage === url) {
-      updates.mainImage = newImages.length > 0 ? newImages[0] : '';
-    }
-    onUpdateBusiness(business.id, updates);
   };
 
   const handleAddImage = async (url: string) => {
@@ -398,22 +223,195 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setAiPrompt('');
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && business) {
-      // Use Object URL instead of Base64
-      const objectUrl = URL.createObjectURL(file);
-      handleAddImage(objectUrl);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+  const handleSetMainImage = (url: string) => {
+    if (!business) return;
+    onUpdateBusiness(business.id, { mainImage: url });
+  };
+
+  const handleDeleteImage = (url: string) => {
+    if (!business || !business.images) return;
+    if (business.images.length <= 1 && business.images.includes(url)) {
+        return alert("Debes tener al menos una imagen en tu galería.");
+    }
+    const newImages = business.images.filter(img => img !== url);
+    const updates: Partial<Business> = { images: newImages };
+    if (business.mainImage === url) {
+      updates.mainImage = newImages.length > 0 ? newImages[0] : '';
+    }
+    onUpdateBusiness(business.id, updates);
+  };
+
+  // ... (Rest of component functions kept as is) ...
+  const handleUpdateCard = () => {
+      if (!business) return;
+      if (newCardData.number.length < 15 || !newCardData.expiry || !newCardData.cvc) {
+          return alert("Por favor revisa los datos de la tarjeta.");
+      }
+
+      setIsSavingCard(true);
+      setTimeout(() => {
+          onUpdateBusiness(business.id, {
+              stripeConnection: {
+                  ...business.stripeConnection,
+                  status: 'connected',
+                  last4: newCardData.number.slice(-4),
+                  cardBrand: newCardData.number.startsWith('4') ? 'Visa' : 'MasterCard',
+              }
+          });
+          setIsSavingCard(false);
+          setIsEditingCard(false);
+          setNewCardData({ number: '', expiry: '', cvc: '', name: '' });
+          alert("✅ Método de pago actualizado correctamente.");
+      }, 1500);
+  };
+
+  const handleConfirmCancellation = () => {
+      if (!business) return;
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 30);
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      onUpdateBusiness(business.id, {
+          scheduledCancellationDate: endDate.toISOString(),
+          adRequests: [], 
+          totalAdSpend: 0, 
+      });
+
+      setCancellationDate(endDateStr);
+      setShowCancelConfirm(false);
+      sendNotification('exit', user.email, { name: user.name, endDate: endDateStr });
+  };
+
+  const handleUploadStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file && business) {
+          if (storyMediaType === 'video') {
+              if (credits < ACTION_COSTS.STORY_VIDEO) {
+                  alert(`Saldo insuficiente. Subir un Sweet Reel cuesta ${ACTION_COSTS.STORY_VIDEO} créditos.`);
+                  return;
+              }
+          }
+
+          setIsUploadingStory(true);
+          try {
+              // REAL UPLOAD FOR STORY
+              const publicUrl = await uploadBusinessImage(file, `story_${business.id}`);
+              
+              const newStory: BusinessStory = {
+                  id: `st_${Date.now()}`,
+                  timestamp: new Date().toISOString(),
+                  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                  type: 'fresh_batch',
+                  text: storyText || (storyMediaType === 'video' ? '¡Sweet Reel del día!' : '¡Novedad del día!'),
+                  imageUrl: publicUrl,
+                  mediaType: storyMediaType
+              };
+
+              const newCredits = storyMediaType === 'video' ? credits - ACTION_COSTS.STORY_VIDEO : credits;
+
+              onUpdateBusiness(business.id, {
+                  stories: [newStory, ...(business.stories || [])].slice(0, 5),
+                  credits: newCredits
+              });
+              alert(storyMediaType === 'video' ? "🎥 ¡Sweet Reel subido!" : "✨ Tu escaparate efímero se ha actualizado.");
+          } catch(e) {
+              alert("Error subiendo historia.");
+          } finally {
+              setIsUploadingStory(false);
+              setStoryText('');
+          }
+      }
+  };
+
+  const handleUpdateBusinessInfo = () => {
+      if (!business) return;
+      onUpdateBusiness(business.id, { ...editFormData, openingHours });
+      alert("Ficha de negocio actualizada correctamente. Los cambios son visibles para los clientes inmediatamente.");
+  };
+
+  const handleBuyExtraLocation = () => {
+      if (!business || !currentPack) return;
+      const price = currentPack.extraLocationPrice;
+      
+      if (confirm(`AÑADIR SEDE EXTRA:\n\nEsto añadirá una nueva ubicación a tu perfil.\nCoste: ${price}€/mes añadidos a tu suscripción.\n\n¿Confirmar y procesar cobro proporcional de este mes?`)) {
+          const newInvoice: Invoice = {
+              id: `INV-SEDE-${Date.now()}`,
+              business_id: business.id,
+              business_name: 'ELEMEDE SL',
+              business_nif: 'B12345678',
+              client_name: business.name,
+              client_nif: business.nif,
+              date: new Date().toISOString().split('T')[0],
+              due_date: new Date().toISOString().split('T')[0],
+              base_amount: price / 1.21,
+              iva_rate: 21,
+              iva_amount: price - (price / 1.21),
+              irpf_rate: 0,
+              irpf_amount: 0,
+              total_amount: price,
+              status: 'paid',
+              concept: `Alta Sede Adicional (Prorrateo) - Plan ${currentPack.label}`,
+              quarter: Math.floor(new Date().getMonth() / 3) + 1
+          };
+          if (onGenerateInvoice) onGenerateInvoice(newInvoice);
+
+          const newSede: AddressDetails = {
+              calle: 'Nueva Dirección (Editar)',
+              cp: '',
+              ciudad: business.city,
+              provincia: business.province,
+              lat: business.lat + 0.01,
+              lng: business.lng + 0.01
+          };
+
+          const updatedSedes = [...(business.direccionesAdicionales || []), newSede];
+          onUpdateBusiness(business.id, { direccionesAdicionales: updatedSedes });
+          setEditFormData(prev => ({ ...prev, direccionesAdicionales: updatedSedes }));
+          
+          alert("✅ Sede añadida y suscripción actualizada. Edita los detalles de la nueva dirección abajo.");
+      }
+  };
+
+  const handleUpdateSede = (index: number, field: keyof AddressDetails, value: string) => {
+      const currentSedes = [...(editFormData.direccionesAdicionales || [])];
+      if (currentSedes[index]) {
+          currentSedes[index] = { ...currentSedes[index], [field]: value };
+          setEditFormData({ ...editFormData, direccionesAdicionales: currentSedes });
+      }
+  };
+
+  const handleDeleteSede = (index: number) => {
+      if(confirm("¿Eliminar esta sede? Dejarás de pagar por ella en el próximo ciclo de facturación.")) {
+          const currentSedes = [...(editFormData.direccionesAdicionales || [])];
+          const newSedes = currentSedes.filter((_, i) => i !== index);
+          setEditFormData({ ...editFormData, direccionesAdicionales: newSedes });
+          if(business) onUpdateBusiness(business.id, { direccionesAdicionales: newSedes });
+      }
+  };
+
+  const handleToggleTag = (tag: string) => {
+    if (!business) return;
+    const currentTags = business.tags || [];
+    if (currentTags.includes(tag)) {
+      onUpdateBusiness(business.id, { tags: currentTags.filter(t => t !== tag) });
+    } else {
+      if (currentTags.length < limits.tags) {
+        onUpdateBusiness(business.id, { tags: [...currentTags, tag] });
+      } else {
+        alert(`🔒 Límite de etiquetas alcanzado (${limits.tags}) para tu plan ${currentPack?.label}.`);
+      }
     }
   };
 
-  const handleCustomBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) {
-          // Use Object URL
-          const objectUrl = URL.createObjectURL(file);
-          setCustomBannerImage(objectUrl);
+      if (file && business) {
+          try {
+              const url = await uploadBusinessImage(file, `ad_${business.id}`);
+              setCustomBannerImage(url);
+          } catch (e) {
+              alert("Error subiendo banner.");
+          }
       }
   };
 
@@ -436,23 +434,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleUnlockLead = (lead: Lead) => {
       if (!business) return;
-      
       const isDominio = business.packId === 'super_top';
       const cost = isDominio ? 0 : ACTION_COSTS.LEAD_UNLOCK;
 
       if (credits < cost) {
           alert(`Saldo insuficiente. Necesitas ${cost} créditos. Recarga en tu monedero.`);
-          setActiveTab('negocio'); // Redirect to wallet
+          setActiveTab('negocio');
           return;
       }
 
       if (confirm(`¿Desbloquear este lead por ${cost} Sweet Credits?`)) {
-          // Deduct credits
-          if (cost > 0) {
-              onUpdateBusiness(business.id, { credits: credits - cost });
-          }
-
-          // Update business
+          if (cost > 0) onUpdateBusiness(business.id, { credits: credits - cost });
           const updatedUnlockedLeads = [...(business.unlockedLeads || []), lead.id];
           onUpdateBusiness(business.id, { unlockedLeads: updatedUnlockedLeads });
           alert("Lead desbloqueado. Ahora puedes ver los datos de contacto.");
@@ -461,7 +453,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleRequestAd = (type: AdRequestType) => {
       if (!business) return;
-      
       const pricing = adPrices[type];
       
       if (confirm(`SOLICITUD DE PUBLICIDAD:\n\nTipo: "${type.replace('_', ' ')}"\nPrecio: ${pricing.final.toFixed(2)}€\n\n¿Confirmar y procesar cobro inmediato?`)) {
@@ -499,19 +490,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       
       if (confirm(`ALERTAS FLASH:\n\nEnviar a usuarios en 3km a la redonda.\nCoste: ${cost} Sweet Credits.\n\n¿Confirmar envío?`)) {
           setIsSendingPush(true);
-          
-          // Deduct Credits
           onUpdateBusiness(business.id, { credits: credits - cost });
 
-          // Create campaign object
           const newCampaign: PushCampaign = {
               id: Math.random().toString(36).substr(2, 9),
               businessId: business.id,
               businessName: business.name,
               message: pushMessage,
               sentAt: new Date().toISOString(),
-              expiresAt: new Date(Date.now() + 3600000).toISOString(), // 1 hour expiration
-              reach: 1500, // Simulated reach
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+              reach: 1500,
               cost: cost
           };
 
@@ -616,7 +604,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </button>
           </div>
 
-          {/* ... (User Profile preserved) ... */}
+          {/* ... (User Profile Content) ... */}
           {activeTab === 'perfil' && (
             <div className="space-y-8 max-w-2xl animate-fade-in">
               <h2 className="text-3xl font-brand font-black text-gray-900 uppercase italic">Ajustes de Perfil</h2>
@@ -667,7 +655,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           )}
 
-          {/* ... (Business Management preserved) ... */}
+          {/* ... (Business Content - Preserved same structure but injected new handlers) ... */}
           {activeTab === 'negocio' && business && currentPack && (
             <div className="space-y-12 animate-fade-in pb-20">
                 {/* 1. PLAN DASHBOARD & ACTIONS */}
@@ -1178,7 +1166,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                               {imageInputMode === 'upload' && (
                                   <div className="text-center">
                                       <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="bg-white border-2 border-gray-200 text-gray-600 px-8 py-4 rounded-xl font-black text-xs uppercase hover:border-orange-400 hover:text-orange-500 transition-all">
-                                          {isUploading ? 'Analizando Calidad...' : 'Seleccionar Archivo'}
+                                          {isUploading ? 'Subiendo a la Nube...' : 'Seleccionar Archivo'}
                                       </button>
                                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                                   </div>
