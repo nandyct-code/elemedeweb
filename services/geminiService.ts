@@ -16,8 +16,7 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// --- SMART IMAGE SELECTOR (REPLACES BASE64 GENERATION) ---
-// A curated database of high-quality images mapped to keywords to simulate generation without Base64 overhead.
+// --- SMART IMAGE SELECTOR (FALLBACK DATABASE) ---
 const SMART_IMAGE_DB = {
     default: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=1200', // Pastry generic
     categories: [
@@ -43,47 +42,90 @@ const getSmartImageUrl = (prompt: string): string => {
     return match ? match.url : SMART_IMAGE_DB.default;
 };
 
+// Helper to extract image from Gemini response
+const extractImageFromResponse = (response: any): string | null => {
+    if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData && part.inlineData.data) {
+                return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+            }
+        }
+    }
+    return null;
+}
+
 // Generate a creative description and an image for a specific sweet idea
 export const generateSweetContent = async (
   prompt: string,
   sector: string
 ): Promise<{ description: string; imageUrl?: string }> => {
+  const ai = getAiClient();
+  let description = "Descripción no disponible por el momento.";
+  let imageUrl = getSmartImageUrl(prompt + " " + sector); // Fallback
+
+  if (!ai) return { description, imageUrl };
+
   try {
-    const ai = getAiClient();
-    
     // 1. Generate Description via AI
-    let description = "Descripción no disponible por el momento.";
-    if (ai) {
-        try {
-            const textResponse = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: `Escribe una descripción breve, sensual y apetitosa (máximo 80 palabras) para una creación de ${sector} basada en: "${prompt}". Enfócate en los sabores, texturas y la experiencia de comerlo.`,
-            });
-            description = textResponse.text || description;
-        } catch (e) {
-            console.warn("AI text generation failed", e);
-        }
+    try {
+        const textResponse = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `Escribe una descripción breve, sensual y apetitosa (máximo 80 palabras) para una creación de ${sector} basada en: "${prompt}". Enfócate en los sabores, texturas y la experiencia de comerlo.`,
+        });
+        description = textResponse.text || description;
+    } catch (e) {
+        console.warn("AI text generation failed", e);
     }
 
-    // 2. Select Smart Image URL (No Base64)
-    const imageUrl = getSmartImageUrl(prompt + " " + sector);
+    // 2. Generate Real Image via AI
+    try {
+        const imageResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [{ text: `Professional food photography, close up, high quality, 4k, delicious ${sector}: ${prompt}` }]
+            }
+        });
+        const generatedImage = extractImageFromResponse(imageResponse);
+        if (generatedImage) imageUrl = generatedImage;
+    } catch (e) {
+        console.warn("AI image generation failed, using fallback", e);
+    }
 
     return { description, imageUrl };
   } catch (error: any) {
     console.error("Error generating sweet content:", error);
     return { 
       description: "Descripción no disponible por el momento (Modo Offline).", 
-      imageUrl: SMART_IMAGE_DB.default
+      imageUrl
     };
   }
 };
 
-// --- IMAGE GENERATION FOR BANNERS ---
+// --- IMAGE GENERATION FOR BANNERS (STUDIO IA) ---
 export const generateBannerImage = async (prompt: string): Promise<string | null> => {
-  // Instead of generating Base64 via AI, we intelligently select a high-quality URL
-  // based on the prompt keywords. This ensures fast loading and no Base64 errors.
-  await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate "thinking" time
-  return getSmartImageUrl(prompt);
+  try {
+    const ai = getAiClient();
+    // If no AI client or explicitly failing, fallback to smart DB
+    if (!ai) return getSmartImageUrl(prompt);
+
+    // Call Real AI Model
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image', 
+        contents: {
+            parts: [{ text: prompt }]
+        }
+    });
+
+    const generatedImage = extractImageFromResponse(response);
+    if (generatedImage) return generatedImage;
+
+    console.warn("No image data in AI response, reverting to stock.");
+    return getSmartImageUrl(prompt);
+
+  } catch (error) {
+    console.error("Error generating banner image:", error);
+    return getSmartImageUrl(prompt);
+  }
 };
 
 // --- IMAGE QUALITY AUDIT ---
@@ -265,7 +307,7 @@ export const getSectorDetails = async (sectorLabel: string): Promise<SectorDetai
       history: "Un sector lleno de tradición y sabor.",
       popularItems: ["Clásico", "Especialidad", "Temporada"],
       tips: "Busca siempre ingredientes naturales.",
-      imagePrompt: "sweet pastry background"
+      imagePrompt: `Delicious ${sectorLabel} background`
     };
   }
 };
@@ -293,6 +335,6 @@ export const getUserProvince = async (lat: number, lng: number): Promise<string>
 };
 
 export const getSectorImage = async (prompt: string): Promise<string | null> => {
-  // Use smart selector instead of Base64 AI generation
-  return getSmartImageUrl(prompt);
+  // Use real AI generation for sector images too
+  return generateBannerImage(prompt);
 };
