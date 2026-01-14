@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "https://fxhgffgkhpgsruotrxmj.supabase.co"
 
 declare const Deno: any;
 
@@ -15,7 +15,7 @@ interface EmailRequest {
   html: string;
 }
 
-serve(async (req) => {
+serve(async (req: { method: string; json: () => PromiseLike<{ record: any; }>|{ record: any; }; }) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -62,7 +62,7 @@ serve(async (req) => {
 
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error : error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }
