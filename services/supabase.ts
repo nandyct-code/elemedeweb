@@ -9,6 +9,7 @@ const getEnvVar = (key: string): string => {
   return (meta.env && meta.env[key]) || '';
 };
 
+// Keys from .env
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
 
@@ -23,6 +24,7 @@ export const supabase = isSupabaseConfigured
   : null;
 
 // --- DATA MAPPING HELPERS ---
+// Maps SQL Snake_Case to App CamelCase
 const mapBusinessFromDB = (dbBiz: any): Business => ({
     id: dbBiz.id,
     name: dbBiz.name,
@@ -45,7 +47,9 @@ const mapBusinessFromDB = (dbBiz: any): Business => ({
     billingCycle: dbBiz.billing_cycle,
     credits: dbBiz.credits,
     totalAdSpend: dbBiz.total_ad_spend,
-    reliabilityScore: dbBiz.reliability_score
+    reliabilityScore: dbBiz.reliability_score,
+    direccionesAdicionales: dbBiz.direcciones_adicionales || [],
+    openingHours: dbBiz.opening_hours
 });
 
 const mapBusinessToDB = (biz: Partial<Business>) => {
@@ -66,13 +70,15 @@ const mapBusinessToDB = (biz: Partial<Business>) => {
     if (biz.tags) mapped.tags = biz.tags;
     if (biz.description) mapped.description = biz.description;
     if (biz.credits !== undefined) mapped.credits = biz.credits;
+    if (biz.direccionesAdicionales) mapped.direcciones_adicionales = biz.direccionesAdicionales;
+    if (biz.openingHours) mapped.opening_hours = biz.openingHours;
     return mapped;
 };
 
 // --- DATA SERVICE ---
 export const dataService = {
     
-    // FETCH ALL (Hybrid)
+    // FETCH ALL (Hybrid Strategy)
     fetchAll: async () => {
         if (supabase) {
             try {
@@ -82,8 +88,12 @@ export const dataService = {
                 // Fetch Profiles (Users)
                 const { data: dbUsers, error: userError } = await supabase.from('profiles').select('*');
 
+                // Fetch Coupons
+                const { data: dbCoupons } = await supabase.from('coupons').select('*');
+
                 if (!bizError && dbBusinesses) {
                     const mappedBusinesses = dbBusinesses.map(mapBusinessFromDB);
+                    
                     const mappedUsers = dbUsers ? dbUsers.map((u: any) => ({
                         id: u.id,
                         email: u.email,
@@ -91,15 +101,16 @@ export const dataService = {
                         role: u.role,
                         status: u.status,
                         favorites: u.favorites,
-                        password_hash: 'HIDDEN'
+                        password_hash: 'HIDDEN' // Security
                     })) : [];
 
+                    // Return DB data if available, falling back to mocks only if empty to show *something* initially
                     return {
                         businesses: mappedBusinesses.length > 0 ? mappedBusinesses : MOCK_BUSINESSES,
                         users: mappedUsers.length > 0 ? mappedUsers : MOCK_USERS,
-                        invoices: MOCK_INVOICES, // Keep mocks for invoices initially
+                        invoices: MOCK_INVOICES, // Keeping mocks for invoices for now
                         banners: MOCK_BANNERS,
-                        coupons: MOCK_DISCOUNT_CODES,
+                        coupons: dbCoupons && dbCoupons.length > 0 ? dbCoupons : MOCK_DISCOUNT_CODES,
                         forum: MOCK_FORUM,
                         leads: MOCK_LEADS,
                         tickets: [],
@@ -107,10 +118,11 @@ export const dataService = {
                     };
                 }
             } catch (e) {
-                console.error("Supabase load failed, using mocks:", e);
+                console.error("Supabase connection failed, using mocks:", e);
             }
         }
 
+        // Fallback for dev mode without keys
         return {
             businesses: [...MOCK_BUSINESSES],
             users: [...MOCK_USERS],
@@ -127,12 +139,14 @@ export const dataService = {
     // AUTHENTICATION
     authenticate: async (email: string, passwordHash: string): Promise<UserAccount | null> => {
         if (supabase) {
+            // Real Auth
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password: passwordHash, 
             });
 
             if (!error && data.user) {
+                // Fetch extra profile data
                 const { data: profile } = await supabase
                     .from('profiles')
                     .select('*')
@@ -142,16 +156,18 @@ export const dataService = {
                 return profile ? { ...profile, id: data.user.id, email: data.user.email!, password_hash: 'HIDDEN' } : null;
             }
         }
-        // Mock fallback
+        // Mock fallback for admin demo login
         const mockUser = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
-        return mockUser || null;
+        if (mockUser && mockUser.password_hash === passwordHash) return mockUser;
+        return null;
     },
 
     createUser: async (user: UserAccount): Promise<UserAccount> => {
         if (supabase) {
+            // 1. Create Auth User
             const { data, error } = await supabase.auth.signUp({
                 email: user.email,
-                password: user.password_hash,
+                password: user.password_hash, // Real password passed here
                 options: {
                     data: {
                         name: user.name,
@@ -162,8 +178,7 @@ export const dataService = {
 
             if (error) throw error;
             
-            // Trigger created via trigger in DB or manually insert profile if needed
-            // For now assuming Auth Hook handles profile creation or we do it manually:
+            // 2. Create Profile (handled by Trigger ideally, but doing manually for safety)
             if (data.user) {
                 const { error: profileError } = await supabase.from('profiles').insert([{
                     id: data.user.id,
@@ -171,6 +186,7 @@ export const dataService = {
                     name: user.name,
                     role: user.role
                 }]);
+                
                 if (!profileError) {
                     return { ...user, id: data.user.id, password_hash: 'HIDDEN' };
                 }
@@ -183,7 +199,8 @@ export const dataService = {
         if (supabase) {
             await supabase.from('profiles').update({
                 name: user.name,
-                favorites: user.favorites
+                favorites: user.favorites,
+                status: user.status
             }).eq('id', user.id);
         }
     },
@@ -192,8 +209,8 @@ export const dataService = {
     createBusiness: async (business: Business) => {
         if (supabase) {
             const dbPayload = mapBusinessToDB(business);
-            // Link owner if exists in current session
-            const { data:  authData } = await supabase.auth.getUser();
+            // Link owner
+            const { data: authData } = await supabase.auth.getUser();
             if (authData.user) {
                 dbPayload.owner_id = authData.user.id;
             }
@@ -211,12 +228,29 @@ export const dataService = {
         }
     },
 
+    // INVOICES & COUPONS
     createInvoice: async (invoice: Invoice) => {
-        // Just log for now as Invoice table structure might vary
-        console.log("Invoice created (DB Pending)", invoice.id);
+        if (supabase) {
+            await supabase.from('invoices').insert([{
+                id: invoice.id,
+                business_id: invoice.business_id,
+                client_name: invoice.client_name,
+                client_nif: invoice.client_nif,
+                date: invoice.date,
+                total_amount: invoice.total_amount,
+                status: invoice.status,
+                data: invoice 
+            }]);
+        }
     },
 
-    getCoupons: async () => MOCK_DISCOUNT_CODES,
+    getCoupons: async () => {
+        if (supabase) {
+            const { data } = await supabase.from('coupons').select('*');
+            return data || [];
+        }
+        return MOCK_DISCOUNT_CODES;
+    },
 };
 
 // --- STORAGE SERVICE (REAL) ---
@@ -225,6 +259,7 @@ export const uploadBusinessImage = async (file: File, pathPrefix: string): Promi
         try {
             const fileExt = file.name.split('.').pop();
             const fileName = `${pathPrefix}_${Date.now()}.${fileExt}`;
+            // Organize by business ID folder if possible, here simple flat structure
             const filePath = `${fileName}`;
 
             const { error: uploadError } = await supabase.storage
@@ -243,10 +278,8 @@ export const uploadBusinessImage = async (file: File, pathPrefix: string): Promi
             return data.publicUrl;
         } catch (e) {
             console.error("Upload failed", e);
-            // Fallback to local
             return URL.createObjectURL(file);
         }
     }
-    // Fallback for offline dev
     return URL.createObjectURL(file);
 };
