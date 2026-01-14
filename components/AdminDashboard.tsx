@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Business, UserAccount, UserStatus,
-  SupportTicket, Invoice, Banner, DiscountCode, ForumQuestion, SocialConfig, SystemFinancialConfig, CountryCode, SubscriptionPack
+  SupportTicket, Invoice, Banner, DiscountCode, ForumQuestion, SocialConfig, SystemFinancialConfig, CountryCode, SubscriptionPack, NotificationLog
 } from '../types';
 import { SUBSCRIPTION_PACKS } from '../constants';
 import { AdminMarketingModule } from './AdminMarketingModule';
@@ -57,7 +57,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
 
   // Email Logs State
-  const [emailLogs, setEmailLogs] = useState(getNotificationLogs());
+  const [emailLogs, setEmailLogs] = useState<NotificationLog[]>([]);
 
   // Self Edit State
   const [isSelfEditModalOpen, setIsSelfEditModalOpen] = useState(false);
@@ -76,10 +76,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Update logs periodically
   useEffect(() => {
-    if (activeRoute === 'notifications') {
-        const interval = setInterval(() => {
-            setEmailLogs([...getNotificationLogs()]);
-        }, 2000);
+    if (activeRoute === 'notifications' || activeRoute === 'marketing') {
+        const fetchLogs = async () => {
+            const logs = await getNotificationLogs();
+            setEmailLogs(logs);
+        };
+        fetchLogs();
+        
+        const interval = setInterval(fetchLogs, 5000); // Poll every 5s
         return () => clearInterval(interval);
     }
   }, [activeRoute]);
@@ -272,6 +276,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    activeRoute === 'settings' ? 'Parámetros del Sistema' :
                    activeRoute === 'overview' ? 'Panel de Mando' : 
                    activeRoute === 'support' ? 'Soporte Técnico' :
+                   activeRoute === 'notifications' ? 'Registro de Comunicaciones' :
                    'Panel de Administración'}
                 </h3>
              </div>
@@ -328,8 +333,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onUpdateTicket={onUpdateTicket}
                   forumQuestions={forumQuestions}
                   onDeleteForumQuestion={onDeleteForumQuestion}
-                  onImpersonate={handleImpersonateUser} // PASSED HERE
+                  onImpersonate={handleImpersonateUser} 
                />
+            )}
+
+            {activeRoute === 'notifications' && isMarketing && (
+                <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 h-full overflow-hidden flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <h4 className="font-black text-gray-900 uppercase italic text-xl">Log de Notificaciones</h4>
+                        <span className="text-[10px] font-black uppercase bg-green-100 text-green-700 px-3 py-1 rounded-full animate-pulse">DB LIVE</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-3 font-mono text-xs">
+                        {emailLogs.length === 0 && <p className="text-gray-400 text-center py-10">Cargando historial...</p>}
+                        {emailLogs.map((log) => (
+                            <div key={log.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex justify-between items-center hover:bg-gray-100 transition-colors">
+                                <div>
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <span className="text-[9px] font-black bg-gray-200 text-gray-600 px-2 py-0.5 rounded">{log.timestamp}</span>
+                                        <span className="text-[9px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded uppercase">{log.type}</span>
+                                        <span className="text-orange-500 font-bold text-[10px]">{log.trigger}</span>
+                                    </div>
+                                    <p className="font-bold text-gray-900">{log.recipient}</p>
+                                    <p className="text-gray-500 text-[10px] truncate max-w-md">{log.subject}</p>
+                                </div>
+                                <div className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${log.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {log.status}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             )}
 
             {activeRoute === 'settings' && isRoot && (

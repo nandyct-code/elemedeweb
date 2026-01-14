@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { DiscountCode, Banner, Business, EmailTemplate, UserAccount, AdRequest, Invoice, SocialConfig, SupportTicket, SystemFinancialConfig, DemandZone, CouponTarget } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { DiscountCode, Banner, Business, EmailTemplate, UserAccount, AdRequest, Invoice, SocialConfig, SupportTicket, SystemFinancialConfig, DemandZone, CouponTarget, NotificationLog } from '../types';
 import { MOCK_EMAIL_TEMPLATES, SECTORS } from '../constants';
 import { getNotificationLogs } from '../services/notificationService';
 import { generateBannerImage } from '../services/geminiService';
@@ -81,6 +81,25 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
 
   // SOCIAL STATE (Local state for editing)
   const [localSocials, setLocalSocials] = useState<SocialConfig>(socialLinks || { instagram: '', facebook: '', tiktok: '', twitter: '', youtube: '' });
+
+  // LOGS STATE
+  const [emailLogs, setEmailLogs] = useState<NotificationLog[]>([]);
+
+  useEffect(() => {
+    if (activeTab === 'emails') {
+      const fetchLogs = async () => {
+        try {
+          const logs = await getNotificationLogs();
+          setEmailLogs(logs);
+        } catch (error) {
+          console.error("Error fetching logs:", error);
+        }
+      };
+      fetchLogs();
+      const interval = setInterval(fetchLogs, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
   // ROI METRICS
   const roiMetrics = useMemo(() => {
@@ -631,7 +650,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
                           <span className="text-[9px] font-black bg-white/10 px-3 py-1 rounded-full animate-pulse">EN VIVO</span>
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-xs">
-                          {getNotificationLogs().map(log => (
+                          {emailLogs.map(log => (
                               <div key={log.id} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
                                   <div className="flex justify-between mb-1 text-gray-400 text-[10px]">
                                       <span>{log.timestamp}</span>
@@ -641,7 +660,7 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
                                   <p className="text-gray-500 text-[10px] truncate">{log.subject}</p>
                               </div>
                           ))}
-                          {getNotificationLogs().length === 0 && (
+                          {emailLogs.length === 0 && (
                               <p className="text-gray-600 text-center py-10">Sin actividad reciente.</p>
                           )}
                       </div>
