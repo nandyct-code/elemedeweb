@@ -32,26 +32,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
   if (!isOpen) return null;
 
   const handleSocialLogin = (provider: 'google' | 'facebook' | 'apple') => {
-    setIsSubmitting(provider);
-    
-    setTimeout(async () => {
-      const newUser: UserAccount = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: `Usuario ${provider.charAt(0).toUpperCase() + provider.slice(1)}`,
-        email: `${provider}@social.com`,
-        role: role as any, 
-        status: 'active',
-        password_hash: 'social_login',
-        last_login: new Date().toISOString(),
-        date_registered: new Date().toISOString(),
-        provider: provider,
-        avatar: provider === 'google' ? 'https://i.pravatar.cc/150?u=google' : undefined
-      };
-      
-      onLogin(newUser);
-      setIsSubmitting(null);
-      onClose();
-    }, 1500);
+    // In a real Supabase app, this would redirect the window
+    alert("Para activar el Login Social, configura los proveedores en el panel de Supabase > Authentication > Providers.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,24 +56,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                 setIsSubmitting(null);
                 onClose();
             } else {
-                setErrorMsg("Credenciales incorrectas. Inténtalo de nuevo.");
+                setErrorMsg("Credenciales incorrectas.");
                 setIsSubmitting(null);
             }
         } else {
             // SIGNUP FLOW
-            // Check if user exists (Simple check, real backend would handle this)
-            const allUsers = await dataService.getUsers();
-            if (allUsers.find((u: { email: string; }) => u.email.toLowerCase() === formData.email.toLowerCase())) {
-                setErrorMsg("Este email ya está registrado.");
-                setIsSubmitting(null);
-                return;
-            }
-
             const newUser: UserAccount = {
-                id: Math.random().toString(36).substr(2, 9),
+                id: '', // Will be assigned by Supabase
                 name: formData.nombre || formData.email.split('@')[0],
                 email: formData.email,
-                password_hash: formData.password, // In real app, hash this!
+                password_hash: formData.password, // Passed for creation, not stored in state
                 role: role as any,
                 status: 'active',
                 last_login: new Date().toISOString(),
@@ -100,10 +74,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                 linkedBusinessId: role === 'business_owner' ? 'pending_setup' : undefined 
             };
             
-            // Persist new user via App handler (which calls dataService)
-            onLogin(newUser); 
-            setIsSubmitting(null);
-            onClose();
+            try {
+                const createdUser = await dataService.createUser(newUser);
+                onLogin(createdUser); 
+                setIsSubmitting(null);
+                onClose();
+            } catch (createError: any) {
+                setErrorMsg(createError.message || "Error al crear cuenta.");
+                setIsSubmitting(null);
+            }
         }
     } catch (err) {
         console.error(err);
@@ -118,11 +97,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     
     setRecoveryStatus('sending');
     
+    // Supabase Password Reset Logic would go here
+    // supabase.auth.resetPasswordForEmail(recoveryEmail, ...)
     setTimeout(() => {
         setRecoveryStatus('sent');
-        // Simulation only
-        alert(`(SISTEMA) Hemos enviado un correo a ${recoveryEmail} con instrucciones.`);
-    }, 1500);
+    }, 1000);
   };
 
   const handleModeSwitch = () => {
@@ -173,7 +152,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
              <form onSubmit={handleRecoverySubmit} className="space-y-6 animate-fade-in">
                 <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 text-center">
                     <div className="text-4xl mb-2">🔐</div>
-                    <p className="text-xs text-gray-600 font-medium">Introduce tu correo electrónico. Si existe en nuestra base de datos, recibirás una <strong>contraseña temporal</strong> al instante.</p>
+                    <p className="text-xs text-gray-600 font-medium">Introduce tu correo electrónico. Si existe en nuestra base de datos, recibirás instrucciones.</p>
                 </div>
                 
                 <div className="flex items-center gap-3 group">
@@ -208,7 +187,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                             disabled={recoveryStatus === 'sending'}
                             className="w-full bg-orange-600 text-white font-brand font-black py-4.5 rounded-2xl shadow-xl hover:bg-orange-500 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-[0.2em] text-[10px]"
                         >
-                            {recoveryStatus === 'sending' ? 'ENVIANDO...' : 'ENVIAR NUEVA CONTRASEÑA'}
+                            {recoveryStatus === 'sending' ? 'ENVIANDO...' : 'RECUPERAR'}
                         </button>
                         <button 
                             type="button"
@@ -294,7 +273,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                         disabled={!!isSubmitting}
                         className="w-full bg-orange-600 text-white font-brand font-black py-4.5 rounded-2xl shadow-xl hover:bg-orange-500 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-[0.2em] text-[10px] mt-4"
                     >
-                        {isSubmitting === 'email' ? 'PROCESANDO...' : mode === 'login' ? 'INICIAR SESIÓN' : 'CREAR CUENTA'}
+                        {isSubmitting === 'email' ? 'CONECTANDO...' : mode === 'login' ? 'INICIAR SESIÓN' : 'CREAR CUENTA'}
                     </button>
                 </form>
 
