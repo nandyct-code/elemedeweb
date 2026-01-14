@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { UserAccount, Business, AddressDetails, SupportTicket, Invoice, AdRequestType, AdRequest, DiscountCode, Rating, SystemFinancialConfig, CouponTarget, LiveStatus, BusinessStory, OpeningHours, Lead, PushCampaign } from '../types';
-import { getSectorImage, auditImageQuality, generateMarketingKit } from '../services/geminiService';
+import { getSectorImage, auditImageQuality, generateMarketingKit, editImageWithAI } from '../services/geminiService';
 import { SECTORS, SUBSCRIPTION_PACKS, BANNER_1_DAY_PRICE, BANNER_7_DAYS_PRICE, BANNER_14_DAYS_PRICE, MICRO_PAYMENT_AMOUNT, MOCK_DISCOUNT_CODES, MOCK_LEADS, LEAD_UNLOCK_PRICE, PUSH_NOTIFICATION_PRICE, CREDIT_PACKS, ACTION_COSTS } from '../constants';
 import { sendNotification } from '../services/notificationService';
 import { stripeService } from '../services/stripeService';
-import { uploadBusinessImage } from '../services/supabase'; // REAL UPLOAD
-import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X } from 'lucide-react';
+import { uploadBusinessImage } from '../services/supabase';
+import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X, Wand2 } from 'lucide-react';
 
-// ... (Rest of imports and component setup stays largely the same, focusing on upload logic change below)
+// ... (Rest of imports and constants are implicit)
 
 const adPrices: Record<AdRequestType, { base: number, final: number }> = {
   '1_day': { base: 14.90, final: BANNER_1_DAY_PRICE },
@@ -44,10 +44,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const [imageInputMode, setImageInputMode] = useState<'url' | 'upload' | 'ai'>('url');
   const [imageUrlInput, setImageUrlInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // EDIT IMAGE STATE (NEW)
+  const [editingImageIndex, setEditingImageIndex] = useState<number | null>(null);
+  const [editPrompt, setEditPrompt] = useState('');
+  const [isEditingLoading, setIsEditingLoading] = useState(false);
+  const [editedImagePreview, setEditedImagePreview] = useState<string | null>(null);
+
   // Ephemeral Story State
   const [isUploadingStory, setIsUploadingStory] = useState(false);
   const storyInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +64,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [customBannerImage, setCustomBannerImage] = useState('');
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  // ... (State variables for password, ticket, etc. maintained) ...
+  // ... (Other state variables) ...
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [ticketSubject, setTicketSubject] = useState('');
@@ -85,6 +90,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     user.linkedBusinessId ? businesses.find(b => b.id === user.linkedBusinessId) : null
   , [user.linkedBusinessId, businesses]);
 
+  // ... (Effects and Helper logic same as before) ...
+  
   useEffect(() => {
       if (business) {
           setEditFormData({
@@ -114,14 +121,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     return SUBSCRIPTION_PACKS.find(p => p.id === business.packId);
   }, [business]);
 
-  const sectorInfo = useMemo(() => {
-      if (!business) return null;
-      return SECTORS.find(s => s.id === business.sectorId);
-  }, [business]);
-
   const limits = currentPack?.limits || { images: 1, tags: 3, videos: 0 };
   const currentImagesCount = (business?.images?.length || 0);
-  const currentTagsCount = business?.tags?.length || 0;
   const credits = business?.credits || 0;
 
   // --- ACTIONS ---
@@ -132,7 +133,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       if (!pack) return;
 
       if (confirm(`¿Comprar ${pack.label} por ${pack.price}€?`)) {
-          // In Real Phase 3, calls Stripe first. Here simulating invoice gen.
           const newInvoice: Invoice = {
               id: `INV-CREDIT-${Date.now()}`,
               business_id: business.id,
@@ -160,14 +160,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       }
   };
 
-  // --- REAL UPLOAD HANDLERS ---
-  
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && business) {
       setIsUploading(true);
       try {
-          // REAL STORAGE UPLOAD
           const publicUrl = await uploadBusinessImage(file, `biz_${business.id}`);
           await handleAddImage(publicUrl);
       } catch (error) {
@@ -178,18 +175,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           if (fileInputRef.current) fileInputRef.current.value = '';
       }
     }
-  };
-
-  const handleCustomBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && business) {
-          try {
-              const url = await uploadBusinessImage(file, `ad_${business.id}`);
-              setCustomBannerImage(url);
-          } catch (e) {
-              alert("Error subiendo banner.");
-          }
-      }
   };
 
   const handleUploadStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,7 +194,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   mediaType: storyMediaType
               };
 
-              // Cost deduction logic...
               const cost = storyMediaType === 'video' ? ACTION_COSTS.STORY_VIDEO : 0;
               if (cost > 0 && credits < cost) {
                   throw new Error("Créditos insuficientes");
@@ -228,8 +212,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           }
       }
   };
-
-  // ... (Rest of handlers: handleAddImage, handleDeleteImage, handleSetMainImage, handleUpdateCard, etc. maintained exactly as before) ...
   
   const handleAddImage = async (url: string) => {
       if (!business) return;
@@ -265,7 +247,56 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     onUpdateBusiness(business.id, updates);
   };
 
-  // ... (UI Render Section) ...
+  // --- IMAGE EDITING HANDLERS ---
+  const handleOpenEdit = (index: number) => {
+      setEditingImageIndex(index);
+      setEditedImagePreview(null);
+      setEditPrompt('');
+  };
+
+  const handleGenerateEdit = async () => {
+      if (!business || editingImageIndex === null || !editPrompt) return;
+      const originalUrl = business.images![editingImageIndex];
+      
+      setIsEditingLoading(true);
+      try {
+          const newImageBase64 = await editImageWithAI(originalUrl, editPrompt);
+          if (newImageBase64) {
+              setEditedImagePreview(newImageBase64);
+          } else {
+              alert("No se pudo editar la imagen. Intenta otro prompt.");
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Error en la edición.");
+      } finally {
+          setIsEditingLoading(false);
+      }
+  };
+
+  const handleSaveEditedImage = () => {
+      if (!business || !editedImagePreview) return;
+      
+      // Add as new image
+      if (currentImagesCount >= limits.images) {
+          alert("Límite de imágenes alcanzado. Reemplazando la original...");
+          // Replace logic if full
+          if (editingImageIndex !== null) {
+              const newImages = [...(business.images || [])];
+              newImages[editingImageIndex] = editedImagePreview;
+              onUpdateBusiness(business.id, { images: newImages });
+          }
+      } else {
+          // Add new
+          onUpdateBusiness(business.id, { 
+              images: [...(business.images || []), editedImagePreview] 
+          });
+      }
+      
+      setEditingImageIndex(null);
+      setEditedImagePreview(null);
+  };
+
   if (!isOpen) return null;
 
   const navItems = [
@@ -282,9 +313,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-0 sm:p-2 md:p-4 bg-gray-950/90 backdrop-blur-2xl animate-fade-in overflow-hidden">
       <div className="bg-white rounded-t-[2.5rem] sm:rounded-[3rem] w-full max-w-6xl h-full sm:h-[95vh] lg:h-[90vh] shadow-2xl flex flex-col lg:flex-row overflow-hidden relative">
-        {/* Sidebar & Main Content Structure reused from previous full version */}
         <aside className="w-full lg:w-72 bg-gray-50 border-b lg:border-r lg:border-b-0 flex flex-col shrink-0">
-           {/* ... Sidebar Content ... */}
            <div className="p-6 flex lg:flex-col gap-4 items-center lg:items-start justify-between w-full">
              <div className="flex lg:flex-col items-center gap-3 text-left lg:text-center shrink-0">
                <div className="w-12 h-12 lg:w-20 lg:h-20 bg-gray-900 rounded-xl flex items-center justify-center text-white text-xl shadow-lg overflow-hidden">
@@ -306,7 +335,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         <main className="flex-1 p-4 sm:p-8 lg:p-12 overflow-y-auto scrollbar-hide bg-white relative">
            <div className="absolute top-6 right-6 hidden lg:block"><button onClick={onClose}>✕</button></div>
            
-           {/* -- CONTENT RENDER LOGIC -- */}
            {activeTab === 'media' && business && (
                <div className="space-y-8 animate-fade-in">
                    {/* STORY UPLOAD SECTION */}
@@ -332,12 +360,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                            </div>
                        </div>
-                       <div className="grid grid-cols-3 gap-4">
+                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                            {business.images?.map((img, idx) => (
-                               <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group">
+                               <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group border border-gray-100 shadow-sm">
                                    <img src={img} className="w-full h-full object-cover" />
-                                   <button onClick={() => handleDeleteImage(img)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12}/></button>
-                                   {business.mainImage !== img && <button onClick={() => handleSetMainImage(img)} className="absolute bottom-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-[8px] font-bold opacity-0 group-hover:opacity-100">Principal</button>}
+                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                       <button onClick={() => handleOpenEdit(idx)} className="bg-white text-purple-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-purple-50 flex items-center gap-2">
+                                           <Wand2 size={12}/> Magic Edit
+                                       </button>
+                                       <div className="flex gap-2">
+                                           <button onClick={() => handleDeleteImage(img)} className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600"><Trash2 size={14}/></button>
+                                           {business.mainImage !== img && <button onClick={() => handleSetMainImage(img)} className="bg-green-500 text-white px-2 py-1 rounded text-[10px] font-bold">Principal</button>}
+                                       </div>
+                                   </div>
                                </div>
                            ))}
                        </div>
@@ -345,10 +380,91 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                </div>
            )}
 
-           {/* Placeholder for other tabs (implementation same as full file provided earlier) */}
-           {activeTab !== 'media' && (
+           {/* EDIT OVERLAY */}
+           {editingImageIndex !== null && business?.images && (
+               <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+                   <div className="bg-white rounded-[2.5rem] w-full max-w-4xl p-8 shadow-2xl flex flex-col md:flex-row gap-8 relative overflow-hidden">
+                       <button onClick={() => { setEditingImageIndex(null); setEditedImagePreview(null); }} className="absolute top-6 right-6 z-10 bg-gray-100 rounded-full p-2 hover:bg-red-100 hover:text-red-500 transition-colors">✕</button>
+                       
+                       <div className="flex-1 space-y-4">
+                           <h3 className="text-2xl font-black text-gray-900 uppercase italic">Editor Mágico IA</h3>
+                           <p className="text-xs text-gray-500">Describe cómo quieres transformar tu imagen usando el poder de Gemini Nano Banana.</p>
+                           
+                           <div className="relative aspect-video rounded-2xl overflow-hidden bg-gray-100 border-2 border-dashed border-gray-200">
+                               {editedImagePreview ? (
+                                   <img src={editedImagePreview} className="w-full h-full object-contain" />
+                               ) : (
+                                   <img src={business.images[editingImageIndex]} className="w-full h-full object-contain" />
+                               )}
+                               {isEditingLoading && (
+                                   <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                                       <div className="flex flex-col items-center">
+                                           <Loader2 className="animate-spin text-purple-600 mb-2" size={32}/>
+                                           <span className="text-[10px] font-black uppercase text-purple-600 animate-pulse">Transformando...</span>
+                                       </div>
+                                   </div>
+                               )}
+                           </div>
+                       </div>
+
+                       <div className="w-full md:w-80 flex flex-col justify-center space-y-6">
+                           <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Prompt de Edición</label>
+                               <textarea 
+                                   className="w-full bg-purple-50 border border-purple-100 p-4 rounded-2xl font-medium text-sm mt-2 focus:border-purple-300 outline-none h-32 resize-none"
+                                   placeholder="Ej: Añadir nieve, filtro vintage, eliminar fondo..."
+                                   value={editPrompt}
+                                   onChange={e => setEditPrompt(e.target.value)}
+                               />
+                           </div>
+                           
+                           <div className="space-y-3">
+                               <button 
+                                   onClick={handleGenerateEdit}
+                                   disabled={isEditingLoading || !editPrompt}
+                                   className="w-full bg-purple-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-purple-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                               >
+                                   <Sparkles size={16} /> Generar Cambio
+                               </button>
+                               {editedImagePreview && (
+                                   <button 
+                                       onClick={handleSaveEditedImage}
+                                       className="w-full bg-green-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-green-700 transition-all shadow-lg"
+                                   >
+                                       Guardar Resultado
+                                   </button>
+                               )}
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           )}
+
+           {activeTab !== 'media' && activeTab !== 'perfil' && (
                <div className="text-center py-20">
-                   <p className="text-gray-400">Contenido de la pestaña {activeTab}...</p>
+                   <p className="text-gray-400 font-bold uppercase text-xs">Sección {activeTab} en construcción.</p>
+               </div>
+           )}
+           
+           {activeTab === 'perfil' && (
+               <div className="space-y-8 animate-fade-in">
+                   <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
+                       <h3 className="text-xl font-black text-gray-900 uppercase italic mb-6">Datos de Cuenta</h3>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase">Nombre</label>
+                               <p className="font-bold text-gray-900 text-lg">{user.name}</p>
+                           </div>
+                           <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase">Email</label>
+                               <p className="font-bold text-gray-900 text-lg">{user.email}</p>
+                           </div>
+                           <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase">Rol</label>
+                               <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">{user.role}</span>
+                           </div>
+                       </div>
+                   </div>
                </div>
            )}
         </main>

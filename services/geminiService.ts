@@ -16,6 +16,23 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Helper to fetch image and convert to base64
+const urlToBase64 = async (url: string): Promise<string> => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("Error converting image to base64", e);
+    return "";
+  }
+};
+
 // --- SMART IMAGE SELECTOR (LEGACY / FALLBACK ONLY FOR NON-STUDIO) ---
 const SMART_IMAGE_DB = {
     default: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=1200',
@@ -104,25 +121,24 @@ export const generateSweetContent = async (
 };
 
 // --- IMAGE GENERATION FOR BANNERS (STUDIO IA) ---
-// STRICTLY REAL AI GENERATION - NO MOCKS
+// UPDATED: Using 'nano banana' (gemini-2.5-flash-image) as requested
 export const generateBannerImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = getAiClient();
     if (!ai) throw new Error("API Key required for Studio IA");
 
     // Enhance prompt for maximum quality
-    const enhancedPrompt = `High-end professional commercial food photography, 8k resolution, cinematic studio lighting, highly detailed, appetizing, masterpiece. Subject: ${prompt}`;
+    const enhancedPrompt = `High-end professional commercial food photography, cinematic studio lighting, highly detailed, appetizing, masterpiece. Subject: ${prompt}`;
 
-    // Call High-Quality Model
+    // Call Gemini 2.5 Flash Image (Nano Banana)
     const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview', 
+        model: 'gemini-2.5-flash-image', 
         contents: {
             parts: [{ text: enhancedPrompt }]
         },
         config: {
             imageConfig: {
                 aspectRatio: "16:9",
-                imageSize: "2K"
             }
         }
     });
@@ -134,8 +150,44 @@ export const generateBannerImage = async (prompt: string): Promise<string | null
 
   } catch (error) {
     console.error("Error generating banner image in Studio IA:", error);
-    return null; // Return null to indicate failure, UI should handle this
+    return null; 
   }
+};
+
+// --- EDIT IMAGE WITH AI (Gemini 2.5 Flash Image) ---
+export const editImageWithAI = async (imageUrl: string, prompt: string): Promise<string | null> => {
+    try {
+        const ai = getAiClient();
+        if (!ai) throw new Error("API Key missing");
+
+        // Convert URL/Blob to Base64
+        const base64Full = await urlToBase64(imageUrl);
+        if (!base64Full) throw new Error("Could not load original image");
+        
+        const [meta, data] = base64Full.split(',');
+        const mimeType = meta.split(':')[1].split(';')[0];
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: data
+                        }
+                    },
+                    { text: `Edit this image: ${prompt}` }
+                ]
+            }
+        });
+        
+        const generatedImage = extractImageFromResponse(response);
+        return generatedImage;
+    } catch (e) {
+        console.error("Error editing image:", e);
+        return null;
+    }
 };
 
 // --- IMAGE QUALITY AUDIT ---
