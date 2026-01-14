@@ -1,4 +1,4 @@
-import { serve } from "https://fxhgffgkhpgsruotrxmj.supabase.co"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 declare const Deno: any;
 
@@ -15,7 +15,7 @@ interface EmailRequest {
   html: string;
 }
 
-serve(async (req: { method: string; json: () => PromiseLike<{ record: any; }>|{ record: any; }; }) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -28,16 +28,19 @@ serve(async (req: { method: string; json: () => PromiseLike<{ record: any; }>|{ 
   }
 
   try {
-    // Esta función puede ser llamada directamente o via Database Webhook
-    // Si es webhook, el payload es diferente, aquí asumimos llamada directa del frontend o trigger simple
-    const { record } = await req.json(); // Asumiendo estructura de Webhook de Supabase
+    // Leemos el body una sola vez
+    const body = await req.json();
     
-    // Si no es webhook, intentamos leer body directo
-    const payload = record ? {
-        to: record.recipient,
-        subject: record.subject_sent,
-        html: `<p>${record.subject_sent}</p>` // Simplificado, usaríamos templates reales
-    } : await req.json();
+    // Determinamos si es un payload directo o viene de un Webhook de base de datos
+    const payload = body.record ? {
+        to: body.record.recipient,
+        subject: body.record.subject_sent,
+        html: `<p>${body.record.subject_sent}</p>` 
+    } : {
+        to: body.to,
+        subject: body.subject,
+        html: body.html
+    };
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -60,9 +63,9 @@ serve(async (req: { method: string; json: () => PromiseLike<{ record: any; }>|{ 
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
-  } catch (error) {
+  } catch (error: any) {
     return new Response(
-      JSON.stringify({ error : error.message }),
+      JSON.stringify({ error: error.message || 'Unknown error' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }

@@ -1,5 +1,5 @@
-import { serve } from "https://fxhgffgkhpgsruotrxmj.supabase.co"
-import Stripe from "https://fxhgffgkhpgsruotrxmj.supabase.co"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import Stripe from "https://esm.sh/stripe@14.21.0"
 
 declare const Deno: any;
 
@@ -12,7 +12,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req: { method: string; json: () => PromiseLike<{ customerId: any; priceId: any; }>|{ customerId: any; priceId: any; }; }) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -48,9 +48,9 @@ serve(async (req: { method: string; json: () => PromiseLike<{ customerId: any; p
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
-  } catch (error) {
+  } catch (error: any) {
     return new Response(
-      JSON.stringify({ error : error.message }),
+      JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }
