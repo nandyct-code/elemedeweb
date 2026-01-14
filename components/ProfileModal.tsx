@@ -8,7 +8,7 @@ import { stripeService } from '../services/stripeService';
 import { uploadBusinessImage } from '../services/supabase';
 import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X, Wand2 } from 'lucide-react';
 
-// ... (Rest of imports and constants are implicit)
+// ... (Rest of component setup)
 
 const adPrices: Record<AdRequestType, { base: number, final: number }> = {
   '1_day': { base: 14.90, final: BANNER_1_DAY_PRICE },
@@ -64,7 +64,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [customBannerImage, setCustomBannerImage] = useState('');
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  // ... (Other state variables) ...
+  // ... (Other state variables: newPassword, ticketSubject, etc.) ...
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [ticketSubject, setTicketSubject] = useState('');
@@ -90,7 +90,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     user.linkedBusinessId ? businesses.find(b => b.id === user.linkedBusinessId) : null
   , [user.linkedBusinessId, businesses]);
 
-  // ... (Effects and Helper logic same as before) ...
+  // ... (Effects for business data loading) ...
   
   useEffect(() => {
       if (business) {
@@ -264,7 +264,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           if (newImageBase64) {
               setEditedImagePreview(newImageBase64);
           } else {
-              alert("No se pudo editar la imagen. Intenta otro prompt.");
+              alert("No se pudo editar la imagen. Intenta simplificar el prompt.");
           }
       } catch (e) {
           console.error(e);
@@ -277,17 +277,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleSaveEditedImage = () => {
       if (!business || !editedImagePreview) return;
       
-      // Add as new image
+      // Add as new image if space, else replace current
       if (currentImagesCount >= limits.images) {
-          alert("Límite de imágenes alcanzado. Reemplazando la original...");
-          // Replace logic if full
-          if (editingImageIndex !== null) {
-              const newImages = [...(business.images || [])];
-              newImages[editingImageIndex] = editedImagePreview;
-              onUpdateBusiness(business.id, { images: newImages });
+          if (confirm("Límite de imágenes alcanzado. ¿Reemplazar la imagen original?")) {
+              if (editingImageIndex !== null) {
+                  const newImages = [...(business.images || [])];
+                  newImages[editingImageIndex] = editedImagePreview;
+                  onUpdateBusiness(business.id, { images: newImages });
+              }
           }
       } else {
-          // Add new
           onUpdateBusiness(business.id, { 
               images: [...(business.images || []), editedImagePreview] 
           });
@@ -365,12 +364,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group border border-gray-100 shadow-sm">
                                    <img src={img} className="w-full h-full object-cover" />
                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
-                                       <button onClick={() => handleOpenEdit(idx)} className="bg-white text-purple-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-purple-50 flex items-center gap-2">
+                                       <button onClick={() => handleOpenEdit(idx)} className="bg-white text-purple-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-purple-50 flex items-center gap-2 shadow-lg">
                                            <Wand2 size={12}/> Magic Edit
                                        </button>
                                        <div className="flex gap-2">
-                                           <button onClick={() => handleDeleteImage(img)} className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600"><Trash2 size={14}/></button>
-                                           {business.mainImage !== img && <button onClick={() => handleSetMainImage(img)} className="bg-green-500 text-white px-2 py-1 rounded text-[10px] font-bold">Principal</button>}
+                                           <button onClick={() => handleDeleteImage(img)} className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 shadow-lg"><Trash2 size={14}/></button>
+                                           {business.mainImage !== img && <button onClick={() => handleSetMainImage(img)} className="bg-green-500 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg">Principal</button>}
                                        </div>
                                    </div>
                                </div>
@@ -388,7 +387,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                        
                        <div className="flex-1 space-y-4">
                            <h3 className="text-2xl font-black text-gray-900 uppercase italic">Editor Mágico IA</h3>
-                           <p className="text-xs text-gray-500">Describe cómo quieres transformar tu imagen usando el poder de Gemini Nano Banana.</p>
+                           <p className="text-xs text-gray-500">Describe cómo quieres transformar tu imagen (Ej: "Añadir luces de navidad", "Quitar fondo", "Hacer más brillante").</p>
                            
                            <div className="relative aspect-video rounded-2xl overflow-hidden bg-gray-100 border-2 border-dashed border-gray-200">
                                {editedImagePreview ? (
@@ -409,10 +408,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                        <div className="w-full md:w-80 flex flex-col justify-center space-y-6">
                            <div>
-                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Prompt de Edición</label>
+                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Instrucción (Prompt)</label>
                                <textarea 
                                    className="w-full bg-purple-50 border border-purple-100 p-4 rounded-2xl font-medium text-sm mt-2 focus:border-purple-300 outline-none h-32 resize-none"
-                                   placeholder="Ej: Añadir nieve, filtro vintage, eliminar fondo..."
+                                   placeholder="Ej: Añadir nieve en la ventana..."
                                    value={editPrompt}
                                    onChange={e => setEditPrompt(e.target.value)}
                                />

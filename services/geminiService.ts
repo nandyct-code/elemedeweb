@@ -16,7 +16,7 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Helper to fetch image and convert to base64
+// Helper to fetch image and convert to base64 for editing
 const urlToBase64 = async (url: string): Promise<string> => {
   try {
     const response = await fetch(url);
@@ -121,14 +121,14 @@ export const generateSweetContent = async (
 };
 
 // --- IMAGE GENERATION FOR BANNERS (STUDIO IA) ---
-// UPDATED: Using 'nano banana' (gemini-2.5-flash-image) as requested
+// UPDATED: Using 'nano banana' (gemini-2.5-flash-image) as requested for consistency
 export const generateBannerImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = getAiClient();
     if (!ai) throw new Error("API Key required for Studio IA");
 
-    // Enhance prompt for maximum quality
-    const enhancedPrompt = `High-end professional commercial food photography, cinematic studio lighting, highly detailed, appetizing, masterpiece. Subject: ${prompt}`;
+    // Optimized prompt for Nano Banana
+    const enhancedPrompt = `Professional commercial food photography, cinematic studio lighting, highly detailed, appetizing, ${prompt}`;
 
     // Call Gemini 2.5 Flash Image (Nano Banana)
     const response = await ai.models.generateContent({
@@ -139,6 +139,7 @@ export const generateBannerImage = async (prompt: string): Promise<string | null
         config: {
             imageConfig: {
                 aspectRatio: "16:9",
+                // imageSize not supported on 2.5-flash-image, removed
             }
         }
     });
