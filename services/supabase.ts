@@ -136,7 +136,68 @@ export const dataService = {
         };
     },
 
-    // AUTHENTICATION
+    // SOCIAL LOGIN (OAUTH)
+    signInWithProvider: async (provider: 'google' | 'facebook' | 'apple') => {
+        if (!supabase) throw new Error("Servicio de autenticación no disponible.");
+        
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: provider,
+            options: {
+                redirectTo: window.location.origin, // Redirect back to the app after login
+            },
+        });
+
+        if (error) throw error;
+        return data;
+    },
+
+    // SESSION LISTENER & PROFILE SYNC
+    initializeAuthListener: (onUserAuthenticated: (user: UserAccount) => void) => {
+        if (!supabase) return;
+
+        supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+                const userId = session.user.id;
+                const userEmail = session.user.email || '';
+                
+                // 1. Check if profile exists
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', userId)
+                    .single();
+
+                if (profile) {
+                    // Existing User
+                    onUserAuthenticated({ ...profile, id: userId, email: userEmail, password_hash: 'HIDDEN' });
+                } else {
+                    // 2. New Social User -> Create Profile automatically
+                    const metaName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || userEmail.split('@')[0];
+                    
+                    const newProfile = {
+                        id: userId,
+                        email: userEmail,
+                        name: metaName,
+                        role: 'user', // Default role for social logins
+                        status: 'active',
+                        date_registered: new Date().toISOString()
+                    };
+
+                    const { error: insertError } = await supabase.from('profiles').insert([newProfile]);
+                    
+                    if (!insertError) {
+                        onUserAuthenticated({ ...newProfile, password_hash: 'HIDDEN' } as UserAccount);
+                    } else {
+                        console.error("Error creating social profile:", insertError);
+                    }
+                }
+            } else if (event === 'SIGNED_OUT') {
+                // Optional: Handle logout globally if needed
+            }
+        });
+    },
+
+    // AUTHENTICATION (EMAIL/PASSWORD)
     authenticate: async (email: string, passwordHash: string): Promise<UserAccount | null> => {
         if (supabase) {
             // Real Auth

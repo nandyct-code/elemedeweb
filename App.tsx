@@ -117,7 +117,18 @@ export const App = () => {
             setForumQuestions(data.forum);
             setLeads(data.leads);
             
-            // Check for persistent session (Simple Token Simulation)
+            // Listen for Supabase Auth Changes (e.g. returning from Google/Facebook login)
+            dataService.initializeAuthListener((authenticatedUser) => {
+                setCurrentUser(authenticatedUser);
+                setIsAuthModalOpen(false); // Close modal if open
+                // Update users list locally if new
+                setUsers(prev => {
+                    if (prev.find(u => u.id === authenticatedUser.id)) return prev;
+                    return [...prev, authenticatedUser];
+                });
+            });
+
+            // Check for persistent session (Legacy/Mock Token Simulation)
             const storedUserId = localStorage.getItem('elemede_session_user');
             if (storedUserId) {
                 const returningUser = data.users.find((u: { id: string; }) => u.id === storedUserId);
