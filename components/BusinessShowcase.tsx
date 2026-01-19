@@ -86,7 +86,24 @@ export const BusinessShowcase: React.FC<BusinessShowcaseProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {businesses.map((biz) => {
           const pack = getPackDetails(biz.packId);
-          const distance = userLocation ? calculateDistance(userLocation.lat, userLocation.lng, biz.lat, biz.lng) : null;
+          
+          // FIND NEAREST LOCATION DISTANCE (HQ or Sede)
+          let distance: number | null = null;
+          if (userLocation) {
+              const hqDist = calculateDistance(userLocation.lat, userLocation.lng, biz.lat, biz.lng);
+              let minDist = hqDist;
+              
+              if (biz.direccionesAdicionales) {
+                  biz.direccionesAdicionales.forEach(sede => {
+                      if (sede.lat && sede.lng) {
+                          const sedeDist = calculateDistance(userLocation.lat, userLocation.lng, sede.lat, sede.lng);
+                          if (sedeDist < minDist) minDist = sedeDist;
+                      }
+                  });
+              }
+              distance = minDist;
+          }
+
           const isSuperTop = biz.packId === 'super_top';
           const isUser = currentUser?.role === 'user';
           const isFavorite = currentUser?.favorites?.includes(biz.id);

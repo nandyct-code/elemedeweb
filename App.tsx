@@ -187,7 +187,10 @@ export const App = () => {
           setUserLocation({ lat: latitude, lng: longitude });
           detectLocation(latitude, longitude);
         },
-        () => console.warn("Geo blocked or denied"),
+        () => {
+            console.warn("Geo blocked or denied. Defaulting to Madrid.");
+            // Maintain default Madrid state
+        },
         { enableHighAccuracy: true }
       );
     }
@@ -206,8 +209,8 @@ export const App = () => {
 
   // --- COMPUTED VALUES ---
   const filteredSectorBusinesses = useMemo(() => {
-    const refLat = userLocation?.lat || 40.4168;
-    const refLng = userLocation?.lng || -3.7038;
+    const refLat = userLocation?.lat || 40.4168; // Default Madrid
+    const refLng = userLocation?.lng || -3.7038; // Default Madrid
 
     let pool = businesses.filter(b => b.status === 'active');
 
@@ -215,11 +218,27 @@ export const App = () => {
         pool = pool.filter(b => b.sectorId === activeSector);
     }
 
+    // UPDATED PROXIMITY LOGIC: Check HQ OR Sedes against visibility radius
     pool = pool.filter(b => {
         const pack = subscriptionPacks.find(p => p.id === b.packId);
         if (!pack) return false;
-        const dist = calculateDistance(refLat, refLng, b.lat, b.lng);
-        return dist <= pack.visibilityRadius;
+        
+        // 1. Check HQ Distance
+        const distHQ = calculateDistance(refLat, refLng, b.lat, b.lng);
+        if (distHQ <= pack.visibilityRadius) return true;
+
+        // 2. Check Sedes Distance
+        if (b.direccionesAdicionales && b.direccionesAdicionales.length > 0) {
+            return b.direccionesAdicionales.some(sede => {
+                if (sede.lat && sede.lng) {
+                    const distSede = calculateDistance(refLat, refLng, sede.lat, sede.lng);
+                    return distSede <= pack.visibilityRadius;
+                }
+                return false;
+            });
+        }
+        
+        return false;
     });
 
     if (selectedTags.length > 0) {
@@ -237,21 +256,26 @@ export const App = () => {
 
   }, [businesses, activeSector, userLocation, selectedTags, subscriptionPacks]);
 
-  // ... (Effects for Geo, Sector Details preserved) ...
+  // --- GEOLOCATION INITIALIZATION ---
   useEffect(() => {
-    const seen = localStorage.getItem('elemede_geo_prompt_seen');
-    if (!seen) {
-      setShowGeoPrompt(true);
+    // "Preguntar siempre": Check permissions on load
+    if ("geolocation" in navigator && "permissions" in navigator) {
+      navigator.permissions.query({ name: 'geolocation' as PermissionName })
+        .then((result) => {
+          if (result.state === 'granted') {
+            requestLocation();
+          } else if (result.state === 'prompt') {
+            setShowGeoPrompt(true);
+          }
+          // If denied, we stay in Madrid (default state)
+        })
+        .catch(() => {
+           // Fallback for browsers not supporting permissions API well, just show prompt
+           setShowGeoPrompt(true); 
+        });
     } else {
-      if ("geolocation" in navigator && "permissions" in navigator) {
-        navigator.permissions.query({ name: 'geolocation' as PermissionName })
-          .then((result) => {
-            if (result.state === 'granted') {
-              requestLocation();
-            }
-          })
-          .catch(() => {});
-      }
+        // Fallback for older browsers
+        requestLocation(); 
     }
   }, [requestLocation]);
 
@@ -288,7 +312,6 @@ export const App = () => {
 
   const handleGeoEnable = () => {
     setShowGeoPrompt(false);
-    localStorage.setItem('elemede_geo_prompt_seen', 'true');
     setTimeout(() => {
         requestLocation();
     }, 100);
@@ -522,7 +545,7 @@ export const App = () => {
       <CookieConsentBanner />
 
       {/* GLOBAL MODALS */}
-      {showGeoPrompt && <GeoLocationModal onEnable={handleGeoEnable} onSkip={() => { setShowGeoPrompt(false); localStorage.setItem('elemede_geo_prompt_seen', 'true'); }} />}
+      {showGeoPrompt && <GeoLocationModal onEnable={handleGeoEnable} onSkip={() => { setShowGeoPrompt(false); /* Default to Madrid */ }} />}
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onOpenSubscription={() => { setIsAuthModalOpen(false); setIsSubscriptionModalOpen(true); }} />
       
       <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} onSuccess={handleSubscriptionSuccess} onInvoiceGenerated={(inv) => { setInvoices(prev => [inv, ...prev]); dataService.createInvoice(inv); }} existingBusinesses={businesses} existingUsers={users} currentCountry={COUNTRIES_DB.find(c => c.code === currentCountryCode)!} countryFinancials={systemFinancials[currentCountryCode]} subscriptionPacks={subscriptionPacks} />
