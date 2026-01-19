@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { SWEET_KEYWORDS, SECTORS } from '../constants';
 
@@ -12,8 +13,13 @@ export const SearchExperience: React.FC<SearchExperienceProps> = ({ onSearch }) 
 
   // Cargar historial al inicio
   useEffect(() => {
-    const saved = localStorage.getItem('elemede_search_history');
-    if (saved) setHistory(JSON.parse(saved));
+    try {
+        const saved = localStorage.getItem('elemede_search_history');
+        if (saved) setHistory(JSON.parse(saved));
+    } catch (e) {
+        console.error("Search history corrupted, clearing.");
+        localStorage.removeItem('elemede_search_history');
+    }
   }, []);
 
   const saveToHistory = (term: string) => {

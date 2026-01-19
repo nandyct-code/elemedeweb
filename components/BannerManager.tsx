@@ -60,15 +60,20 @@ export const BannerManager: React.FC<BannerManagerProps> = ({
 
   // 1. Load History on Mount
   useEffect(() => {
-      const stored = localStorage.getItem('elemede_banner_engine');
-      if (stored) {
-          const parsed = JSON.parse(stored);
-          const today = new Date().toISOString().split('T')[0];
-          if (parsed.dateString !== today) {
-              parsed.platformViewsToday = 0;
-              parsed.dateString = today;
+      try {
+          const stored = localStorage.getItem('elemede_banner_engine');
+          if (stored) {
+              const parsed = JSON.parse(stored);
+              const today = new Date().toISOString().split('T')[0];
+              if (parsed.dateString !== today) {
+                  parsed.platformViewsToday = 0;
+                  parsed.dateString = today;
+              }
+              setUserHistory(parsed);
           }
-          setUserHistory(parsed);
+      } catch (e) {
+          console.error("Banner history corrupted, resetting.");
+          localStorage.removeItem('elemede_banner_engine');
       }
   }, []);
 

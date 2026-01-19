@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
   <head>
@@ -27,21 +28,46 @@
           -ms-overflow-style: none;
           scrollbar-width: none;
       }
+      
+      /* --- ANIMATIONS FIXED --- */
       .animate-fade-in {
         animation: fadeIn 0.5s ease-out forwards;
       }
+      .animate-fade-in-up {
+        animation: fadeInUp 0.5s ease-out forwards;
+      }
+      .animate-pulse-slow {
+        animation: pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      .animate-spin-slow {
+        animation: spinSlow 8s linear infinite;
+      }
+      .animate-shake {
+        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translate3d(0, 20px, 0); }
+        to { opacity: 1; transform: translate3d(0, 0, 0); }
+      }
+      @keyframes pulseSlow {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      @keyframes spinSlow {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
       @keyframes shake {
         0%, 100% { transform: translateX(0); }
         10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
         20%, 40%, 60%, 80% { transform: translateX(5px); }
       }
-      .animate-shake {
-        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
-      }
+      
       /* Custom Leaflet Marker Styles */
       .custom-marker {
         display: flex;

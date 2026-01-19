@@ -218,19 +218,13 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         // 1. Create Stripe Customer & Validate Card (Simulated via Service)
         const stripeCustomer = await stripeService.createCustomer(formData.email, formData.nombre, cardDetails);
         
-        // 2. Process First Payment (Simulated)
-        const paymentResult = await stripeService.processPayment(
-            stripeCustomer.customerId, 
-            total, 
-            `Suscripción Inicial ${currentPack?.label}`
-        );
-
-        // 3. Create Subscription (Simulated)
+        // 2. Create Subscription (Simulated) - This processes the first charge automatically
         const subscription = await stripeService.createSubscription(stripeCustomer.customerId, formData.packId);
 
         // Generate IDs
         const newBusinessId = Math.random().toString(36).substr(2, 9);
-        const invoiceId = paymentResult.invoiceId;
+        // Use a generated ID or one from subscription response if available
+        const invoiceId = `INV-${Date.now()}`;
 
         // Calculate Stripe Fee
         const stripeFee = stripeConfig?.isConnected 
@@ -256,7 +250,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             irpf_rate: 0,
             irpf_amount: 0,
             total_amount: total,
-            status: 'paid',
+            status: 'paid', // Subscription setup usually charges first cycle immediately
             concept: `Suscripción ${currentPack?.label} (${formData.billingCycle === 'annual' ? 'Anual' : 'Mensual'}) + ${formData.sedes.length} Sedes` + (appliedCoupon ? ` [CUPÓN: ${appliedCoupon.code}]` : ''),
             quarter: Math.floor(new Date().getMonth() / 3) + 1,
             currencySymbol: currentCountry.currencySymbol,

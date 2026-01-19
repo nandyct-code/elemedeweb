@@ -54,6 +54,17 @@ export const SECTORS: SectorInfo[] = [
     ] 
   },
   { 
+    id: 'reposteria_creativa',
+    label: 'Repostería Creativa',
+    description: 'Tartas de diseño, modelado en azúcar y arte comestible.',
+    icon: '🎂',
+    color: 'bg-indigo-400',
+    tags: [
+      'Fondant', 'Diseño 3D', 'Tartas Escultura', 'Cookies Decoradas', 'Cake Pops', 
+      'Cumpleaños Temáticos', 'Modelado', 'Arte Comestible', 'Personalización Total'
+    ]
+  },
+  { 
     id: 'confiterias', 
     label: 'Confiterías', 
     description: 'Bombones y dulces artesanales de autor.', 
