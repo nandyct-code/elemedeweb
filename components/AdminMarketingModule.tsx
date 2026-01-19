@@ -82,6 +82,13 @@ export const AdminMarketingModule: React.FC<AdminMarketingModuleProps> = ({
   // SOCIAL STATE (Local state for editing)
   const [localSocials, setLocalSocials] = useState<SocialConfig>(socialLinks || { instagram: '', facebook: '', tiktok: '', twitter: '', youtube: '' });
 
+  // SYNC PROPS WITH LOCAL STATE
+  useEffect(() => {
+      if (socialLinks) {
+          setLocalSocials(socialLinks);
+      }
+  }, [socialLinks]);
+
   // LOGS STATE
   const [emailLogs, setEmailLogs] = useState<NotificationLog[]>([]);
 

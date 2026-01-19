@@ -16,12 +16,31 @@ const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
 const isSupabaseConfigured = supabaseUrl && supabaseAnonKey;
 
 if (!isSupabaseConfigured) {
-    console.warn("⚠️ Supabase keys missing. Running in OFFLINE mode.");
+    console.warn("⚠️ Supabase keys missing. Running in OFFLINE/DEMO mode with LocalStorage persistence.");
 }
 
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
+
+// --- PERSISTENCE HELPERS (LOCAL STORAGE) ---
+const loadFromStorage = (key: string, defaultData: any) => {
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : defaultData;
+    } catch (e) {
+        console.error(`Error loading ${key} from storage`, e);
+        return defaultData;
+    }
+};
+
+const saveToStorage = (key: string, data: any) => {
+    try {
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+        console.error(`Error saving ${key} to storage`, e);
+    }
+};
 
 // --- DATA MAPPING HELPERS ---
 // Maps SQL Snake_Case to App CamelCase
@@ -122,16 +141,16 @@ export const dataService = {
             }
         }
 
-        // Fallback for dev mode without keys
+        // Fallback for dev mode without keys (USING LOCALSTORAGE PERSISTENCE)
         return {
-            businesses: [...MOCK_BUSINESSES],
-            users: [...MOCK_USERS],
-            invoices: [...MOCK_INVOICES],
-            banners: [...MOCK_BANNERS],
-            coupons: [...MOCK_DISCOUNT_CODES],
-            forum: [...MOCK_FORUM],
-            leads: [...MOCK_LEADS],
-            tickets: [],
+            businesses: loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES),
+            users: loadFromStorage('elemede_data_users', MOCK_USERS),
+            invoices: loadFromStorage('elemede_data_invoices', MOCK_INVOICES),
+            banners: loadFromStorage('elemede_data_banners', MOCK_BANNERS),
+            coupons: loadFromStorage('elemede_data_coupons', MOCK_DISCOUNT_CODES),
+            forum: loadFromStorage('elemede_data_forum', MOCK_FORUM),
+            leads: loadFromStorage('elemede_data_leads', MOCK_LEADS),
+            tickets: loadFromStorage('elemede_data_tickets', []),
             campaigns: []
         };
     },
@@ -217,9 +236,13 @@ export const dataService = {
                 return profile ? { ...profile, id: data.user.id, email: data.user.email!, password_hash: 'HIDDEN' } : null;
             }
         }
-        // Mock fallback for admin demo login
-        const mockUser = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (mockUser && mockUser.password_hash === passwordHash) return mockUser;
+        
+        // Mock fallback for admin demo login (USING LOCALSTORAGE)
+        const localUsers: UserAccount[] = loadFromStorage('elemede_data_users', MOCK_USERS);
+        const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+        
+        // Simple password check for demo (plain text or simple hash match)
+        if (user && user.password_hash === passwordHash) return user;
         return null;
     },
 
@@ -253,7 +276,12 @@ export const dataService = {
                 }
             }
         }
-        return { ...user, id: `mock_${Date.now()}` };
+        
+        // LOCAL PERSISTENCE FALLBACK
+        const newUser = { ...user, id: `u_${Date.now()}` };
+        const currentUsers = loadFromStorage('elemede_data_users', MOCK_USERS);
+        saveToStorage('elemede_data_users', [...currentUsers, newUser]);
+        return newUser;
     },
 
     updateUser: async (user: UserAccount) => {
@@ -263,6 +291,11 @@ export const dataService = {
                 favorites: user.favorites,
                 status: user.status
             }).eq('id', user.id);
+        } else {
+            // Local Update
+            const currentUsers: UserAccount[] = loadFromStorage('elemede_data_users', MOCK_USERS);
+            const updated = currentUsers.map(u => u.id === user.id ? user : u);
+            saveToStorage('elemede_data_users', updated);
         }
     },
 
@@ -278,6 +311,10 @@ export const dataService = {
             
             const { error } = await supabase.from('businesses').insert([dbPayload]);
             if (error) console.error("Error creating business", error);
+        } else {
+            // Local persistence
+            const currentBiz = loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES);
+            saveToStorage('elemede_data_businesses', [...currentBiz, business]);
         }
         return business;
     },
@@ -286,6 +323,11 @@ export const dataService = {
         if (supabase) {
             const dbUpdates = mapBusinessToDB(updates);
             await supabase.from('businesses').update(dbUpdates).eq('id', id);
+        } else {
+            // Local persistence
+            const currentBiz: Business[] = loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES);
+            const updated = currentBiz.map(b => b.id === id ? { ...b, ...updates } : b);
+            saveToStorage('elemede_data_businesses', updated);
         }
     },
 
@@ -302,6 +344,9 @@ export const dataService = {
                 status: invoice.status,
                 data: invoice 
             }]);
+        } else {
+            const currentInvoices = loadFromStorage('elemede_data_invoices', MOCK_INVOICES);
+            saveToStorage('elemede_data_invoices', [invoice, ...currentInvoices]);
         }
     },
 
@@ -310,7 +355,7 @@ export const dataService = {
             const { data } = await supabase.from('coupons').select('*');
             return data || [];
         }
-        return MOCK_DISCOUNT_CODES;
+        return loadFromStorage('elemede_data_coupons', MOCK_DISCOUNT_CODES);
     },
 };
 
@@ -342,5 +387,6 @@ export const uploadBusinessImage = async (file: File, pathPrefix: string): Promi
             return URL.createObjectURL(file);
         }
     }
+    // Local Object URL for offline demo
     return URL.createObjectURL(file);
 };

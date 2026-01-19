@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14.21.0"
 
@@ -20,16 +21,19 @@ serve(async (req) => {
   try {
     const { customerId, priceId } = await req.json()
 
-    // Mapeo de IDs internos a IDs reales de Stripe (Estos deben existir en tu dashboard de Stripe)
-    // Si no existen, usamos un precio genérico de prueba
+    // Mapeo de IDs internos a IDs reales de Stripe
     const stripePriceMap: Record<string, string> = {
         'basic': 'price_basic_monthly_id',
+        'basic_annual': 'price_basic_annual_id',
         'medium': 'price_medium_monthly_id',
+        'medium_annual': 'price_medium_annual_id',
         'premium': 'price_premium_monthly_id',
-        'super_top': 'price_top_monthly_id'
+        'premium_annual': 'price_premium_annual_id',
+        'super_top': 'price_top_monthly_id',
+        'super_top_annual': 'price_top_annual_id'
     };
 
-    const finalPriceId = stripePriceMap[priceId] || priceId; // Fallback si envían ID directo
+    const finalPriceId = stripePriceMap[priceId] || priceId; // Fallback si envían ID directo o testing
 
     // Crear Suscripción
     const subscription = await stripe.subscriptions.create({

@@ -4,11 +4,12 @@ import { Business } from '../types';
 
 interface StoryRailProps {
   businesses: Business[];
-  onViewBusiness: (id: string) => void;
+  onViewBusiness?: (id: string) => void;
+  onViewStory: (id: string) => void; // NEW PROP
   sectorFilter?: string | null;
 }
 
-export const StoryRail: React.FC<StoryRailProps> = ({ businesses, onViewBusiness, sectorFilter }) => {
+export const StoryRail: React.FC<StoryRailProps> = ({ businesses, onViewBusiness, onViewStory, sectorFilter }) => {
   // Filter businesses that have active stories (within last 24h)
   const activeStories = businesses.filter(b => {
       if (!b.stories || b.stories.length === 0) return false;
@@ -28,7 +29,7 @@ export const StoryRail: React.FC<StoryRailProps> = ({ businesses, onViewBusiness
                     <div 
                         key={biz.id} 
                         className="flex flex-col items-center gap-2 cursor-pointer group flex-shrink-0"
-                        onClick={() => onViewBusiness(biz.id)}
+                        onClick={() => onViewStory(biz.id)}
                     >
                         <div className={`relative w-16 h-16 md:w-20 md:h-20 rounded-full p-[3px] shadow-md group-hover:scale-105 transition-transform ${story.mediaType === 'video' ? 'bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500 animate-pulse-slow' : 'bg-gradient-to-tr from-yellow-400 via-orange-500 to-pink-600'}`}>
                             <div className="w-full h-full rounded-full border-2 border-white overflow-hidden bg-gray-100 relative">

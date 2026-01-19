@@ -25,15 +25,6 @@ interface AdminMaestroModuleProps {
   onImpersonate?: (user: UserAccount) => void; 
 }
 
-// ... (MOCK_SYSTEM_LOGS remains same)
-const MOCK_SYSTEM_LOGS = [
-    { time: '10:42:01', type: 'info', msg: '[AUTO-SCALE] Tráfico estable en Madrid. Nodos: 3.' },
-    { time: '10:42:15', type: 'success', msg: '[GOVERNANCE] Regla #3 activada: Boost aplicado a 12 negocios.' },
-    { time: '10:43:05', type: 'warning', msg: '[DENSITY] Zona Barcelona Centro saturada (85%). Pausando nuevos registros basic.' },
-    { time: '10:44:20', type: 'info', msg: '[SEO-BOT] 45 landings generadas automáticamente para "Tartas Veganas".' },
-    { time: '10:45:00', type: 'success', msg: '[BILLING] Ciclo de facturación automático completado sin errores.' }
-];
-
 // MOCK SECURITY AUDIT LOGS (PUNTO 3)
 const MOCK_SECURITY_AUDIT: SecurityLog[] = [
     { id: 'sec_1', timestamp: '2024-03-20 10:30:05', ip: '192.168.1.55', action: 'LOGIN_ATTEMPT', reason: 'Fallo credenciales Admin Marketing', status: 'monitored' },
@@ -44,7 +35,7 @@ const MOCK_SECURITY_AUDIT: SecurityLog[] = [
 ];
 
 export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
-  activeTab: initialTab,
+  activeTab,
   users,
   businesses,
   onUpdateUser,
@@ -63,16 +54,11 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
   onDeleteForumQuestion,
   onImpersonate
 }) => {
-  const [internalTab, setInternalTab] = useState(initialTab as any);
-  
-  useEffect(() => { setInternalTab(initialTab as any); }, [initialTab]);
-
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSectorFilter, setSelectedSectorFilter] = useState<string>('all');
   const [newBannedWord, setNewBannedWord] = useState('');
-  const [selectedCountryConfig, setSelectedCountryConfig] = useState<CountryCode>('ES');
   const [serverConfig, setServerConfig] = useState({ domain: 'elemede.com', serverIp: '192.168.1.100', status: 'online' });
   
   // AI BRAIN STATE
@@ -211,28 +197,9 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* TABS HEADER */}
-      <div className="flex bg-white p-2 rounded-3xl shadow-sm w-fit border-2 border-gray-50 mb-6 flex-wrap gap-2">
-        {[
-            { id: 'cerebro_ia', label: 'Cerebro IA', icon: <Brain size={16} /> },
-            { id: 'moderacion', label: 'Moderación', icon: <Camera size={16} /> },
-            { id: 'usuarios', label: 'Usuarios', icon: <Users size={16} /> },
-            { id: 'negocios', label: 'Negocios', icon: <Activity size={16} /> },
-            { id: 'soporte', label: 'Soporte Activo', icon: <MessageCircle size={16} /> },
-            { id: 'sistema', label: 'Config Sistema', icon: <Settings size={16} /> }
-        ].map(tab => (
-          <button 
-            key={tab.id} 
-            onClick={() => setInternalTab(tab.id as any)} 
-            className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${internalTab === tab.id ? 'bg-indigo-600 text-white shadow-xl' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
-
+      
       {/* --- CEREBRO IA (MAESTRO CORE) --- */}
-      {internalTab === 'cerebro_ia' && (
+      {activeTab === 'cerebro_ia' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* SYSTEM HEALTH & LOGS */}
               <div className="lg:col-span-2 space-y-8">
@@ -297,7 +264,7 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
       )}
 
       {/* --- SISTEMA TAB (SERVER, CONFIG & AUDIT) --- */}
-      {internalTab === 'sistema' && (
+      {activeTab === 'sistema' && (
           <div className="space-y-8">
               
               {/* HEALTH MONITOR */}
@@ -434,7 +401,7 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
       )}
 
       {/* ... (MODERATION, SOPORTE, NEGOCIOS, USUARIOS tabs preserved) ... */}
-      {internalTab === 'moderacion' && (
+      {activeTab === 'moderacion' && (
           <div className="space-y-8">
               {/* BANNED WORDS */}
               <div className="bg-white p-8 rounded-[3rem] border border-red-50 shadow-sm">
@@ -506,7 +473,7 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {internalTab === 'soporte' && (
+      {activeTab === 'soporte' && (
           <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {tickets?.map(ticket => (
@@ -533,7 +500,7 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {internalTab === 'negocios' && (
+      {activeTab === 'negocios' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredBusinesses.map(biz => (
                   <div key={biz.id} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm relative group hover:shadow-xl transition-all">
@@ -561,7 +528,7 @@ export const AdminMaestroModule: React.FC<AdminMaestroModuleProps> = ({
           </div>
       )}
 
-      {internalTab === 'usuarios' && (
+      {activeTab === 'usuarios' && (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <input 

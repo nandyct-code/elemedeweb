@@ -218,8 +218,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         // 1. Create Stripe Customer & Validate Card (Simulated via Service)
         const stripeCustomer = await stripeService.createCustomer(formData.email, formData.nombre, cardDetails);
         
-        // 2. Create Subscription (Simulated) - This processes the first charge automatically
-        const subscription = await stripeService.createSubscription(stripeCustomer.customerId, formData.packId);
+        // 2. Create Subscription
+        // FIX: Handle Annual Billing Cycle correctly for backend mapping
+        let finalPriceId = formData.packId;
+        if (formData.billingCycle === 'annual') {
+            finalPriceId += '_annual';
+        }
+
+        const subscription = await stripeService.createSubscription(stripeCustomer.customerId, finalPriceId);
 
         // Generate IDs
         const newBusinessId = Math.random().toString(36).substr(2, 9);
@@ -351,6 +357,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-gray-900/90 backdrop-blur-md animate-fade-in">
+      {/* ... (Rest of the render logic remains identical) ... */}
       
       {/* LEGAL TEXT MODAL OVERLAY */}
       {legalTextToShow && (
@@ -466,6 +473,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
           {step === 3 && (
             <div className="space-y-8 max-w-4xl mx-auto">
+              {/* Form Content Preserved */}
               <div>
                   <h3 className="text-lg font-black text-gray-900 uppercase tracking-widest text-center mb-8">3. Datos del Negocio</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-6 rounded-[2rem] border border-gray-100">

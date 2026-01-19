@@ -14,24 +14,55 @@ export const SweetBattle: React.FC<SweetBattleProps> = ({ businesses, onVote }) 
   const [winnerId, setWinnerId] = useState<string | null>(null);
   const [votes, setVotes] = useState<Record<string, number>>({});
 
+  // Seeded Random Generator for Daily Stability
+  const getDailySeed = () => {
+    const today = new Date();
+    // Unique seed per day: YYYYMMDD
+    return today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  };
+
+  const seededRandom = (seed: number) => {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+  };
+
   // Initialize Battle
   useEffect(() => {
     // Need at least 2 businesses
     if (businesses.length < 2) return;
 
-    // Pick 2 random unique businesses
-    const shuffled = [...businesses].sort(() => 0.5 - Math.random());
-    const selected = shuffled.slice(0, 2);
-    setContenders(selected);
-    
-    // Reset state
-    setHasVoted(false);
-    setWinnerId(null);
-    setVotes({
-        [selected[0].id]: Math.floor(Math.random() * 50) + 20,
-        [selected[1].id]: Math.floor(Math.random() * 50) + 20
+    const seed = getDailySeed();
+    const shuffled = [...businesses].sort((a, b) => {
+        // Deterministic sort based on ID and seed
+        return (a.id.charCodeAt(0) + seed) - (b.id.charCodeAt(0) + seed);
     });
-  }, [businesses.length]); // Refresh if business count changes drastically
+    
+    // Pick 2 pseudo-random contenders using the seed
+    const idx1 = Math.floor(seededRandom(seed) * shuffled.length);
+    let idx2 = Math.floor(seededRandom(seed + 1) * shuffled.length);
+    if (idx1 === idx2) idx2 = (idx2 + 1) % shuffled.length;
+
+    const c1 = shuffled[idx1];
+    const c2 = shuffled[idx2];
+
+    setContenders([c1, c2]);
+    
+    // Check local storage for vote status today
+    const votedToday = localStorage.getItem(`elemede_voted_battle_${seed}`);
+    if (votedToday) {
+        setHasVoted(true);
+        setWinnerId(votedToday);
+    } else {
+        setHasVoted(false);
+        setWinnerId(null);
+    }
+
+    // Deterministic initial votes based on ID length + seed (mocking reality)
+    setVotes({
+        [c1.id]: Math.floor(seededRandom(seed + 2) * 50) + 20,
+        [c2.id]: Math.floor(seededRandom(seed + 3) * 50) + 20
+    });
+  }, [businesses.length]); 
 
   const handleVote = (selectedId: string) => {
     if (hasVoted) return;
@@ -43,6 +74,10 @@ export const SweetBattle: React.FC<SweetBattleProps> = ({ businesses, onVote }) 
     
     setWinnerId(selectedId);
     setHasVoted(true);
+    
+    // Persist vote for today
+    const seed = getDailySeed();
+    localStorage.setItem(`elemede_voted_battle_${seed}`, selectedId);
     
     if (onVote) onVote(selectedId);
   };

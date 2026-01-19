@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Invoice, Business, SupportTicket, CountryCode, SystemFinancialConfig, AuditLog, SubscriptionPackType, SubscriptionPack } from '../types';
 import { SUBSCRIPTION_PACKS, COUNTRIES_DB, SECTORS, BANNER_1_DAY_PRICE, BANNER_7_DAYS_PRICE, BANNER_14_DAYS_PRICE } from '../constants';
 import { PieChart, DollarSign, Settings, Download, Search, AlertCircle, Link as LinkIcon, BarChart, CreditCard, Lock, TrendingUp, TrendingDown, Activity, Users, Wallet, ShieldCheck, FileText, RefreshCw, Save } from 'lucide-react';
@@ -54,6 +54,16 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
       webhookSecret: systemFinancials['ES'].stripe?.webhookSecret || ''
   });
 
+  // SYNC KEYS WHEN COUNTRY CHANGES
+  useEffect(() => {
+      const config = systemFinancials[currentIssuerCountry].stripe;
+      setStripeKeys({
+          publicKey: config?.publicKey || '',
+          secretKey: config?.secretKey || '',
+          webhookSecret: config?.webhookSecret || ''
+      });
+  }, [currentIssuerCountry, systemFinancials]);
+
   // --- SAAS METRICS CALCULATION ---
   const saasMetrics = useMemo(() => {
       let mrr = 0;
@@ -95,15 +105,6 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
       return { totalRevenue, totalExpenses, netProfit, margin };
   }, [saasMetrics.mrr, operationalCosts]);
 
-  const cashFlowProjection = useMemo(() => {
-      // Mock projection based on MRR
-      return [
-          { month: 'Mes +1', amount: saasMetrics.mrr * 1.05 }, // +5% growth
-          { month: 'Mes +2', amount: saasMetrics.mrr * 1.10 }, // +10% growth
-          { month: 'Mes +3', amount: saasMetrics.mrr * 1.15 }, // +15% growth
-      ];
-  }, [saasMetrics.mrr]);
-
   // --- ACTIONS ---
   const handleSaveStripeConfig = () => {
       // Validate fake keys just for UX
@@ -125,7 +126,7 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
               }
           }
       }));
-      onNotify("✅ API de Stripe vinculada correctamente. Cobros habilitados.");
+      onNotify(`✅ API de Stripe para ${currentIssuerCountry} vinculada correctamente.`);
   };
 
   const handleDownloadGestoriaZIP = () => {
@@ -212,7 +213,7 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
                       <div className="w-12 h-12 bg-[#635BFF] rounded-2xl flex items-center justify-center text-white"><CreditCard /></div>
                       <div>
                           <h3 className="text-xl font-black text-gray-900 uppercase italic">Vinculación Stripe</h3>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Gestión de Cobros y Suscripciones</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Configuración para {currentIssuerCountry}</p>
                       </div>
                   </div>
 
@@ -268,6 +269,7 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
                   </div>
               </div>
 
+              {/* ... (Security Banking Card preserved) ... */}
               <div className="bg-gray-50 p-8 rounded-[3rem] border border-gray-200 flex flex-col justify-center items-center text-center">
                   <div className="bg-white p-6 rounded-full shadow-lg mb-6">
                       <ShieldCheck size={48} className="text-green-500" />
@@ -290,6 +292,8 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
           </div>
       )}
 
+      {/* ... (Other tabs preserved) ... */}
+      
       {/* --- PESTAÑA: PRECIOS (PRICING MANAGEMENT) --- */}
       {activeTab === 'precios' && (
           <div className="space-y-8 animate-fade-in">
@@ -375,7 +379,7 @@ export const AdminAccountingModule: React.FC<AdminAccountingModuleProps> = ({
           </div>
       )}
 
-      {/* --- PESTAÑA: METRICAS SAAS (CON P&L MEJORADO) --- */}
+      {/* ... (Metrics, Verifactu, Recobro, Gestoria preserved) ... */}
       {activeTab === 'metrics' && (
           <div className="space-y-8 animate-fade-in">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

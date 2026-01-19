@@ -174,10 +174,10 @@ export const SectorForum: React.FC<SectorForumProps> = ({
             const canReply = isMySector && isMyProvince;
             const isUserOwner = currentUser?.role === 'business_owner';
             
-            // Lógica de validación para eliminar (Autor O Admin Maestro)
+            // Lógica de validación para eliminar (Autor O Admin Maestro/Root/Soporte)
             const isAuthor = currentUser?.id === q.authorId;
-            const isAdminMaestro = currentUser?.role === 'admin_maestro';
-            const canDelete = isAuthor || isAdminMaestro;
+            const isAdmin = currentUser?.role === 'admin_root' || currentUser?.role === 'admin_soporte' || currentUser?.role === 'admin_maestro';
+            const canDelete = isAuthor || isAdmin;
 
             return (
               <div key={q.id} className="bg-white rounded-[2.5rem] p-8 shadow-lg border border-orange-50 hover:shadow-2xl transition-all border-l-[12px] border-l-orange-400 group">
@@ -203,7 +203,7 @@ export const SectorForum: React.FC<SectorForumProps> = ({
                       <button 
                         onClick={() => handleDeleteQuestion(q.id)}
                         className="bg-white text-gray-300 hover:text-red-500 hover:bg-red-50 w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm border border-gray-100"
-                        title={isAdminMaestro ? "Borrar como Admin" : "Eliminar mi pregunta"}
+                        title="Eliminar pregunta"
                       >
                         🗑️
                       </button>

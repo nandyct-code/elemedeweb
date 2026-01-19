@@ -47,7 +47,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed top-20 right-4 z-[2000] w-80 md:w-96 animate-fade-in-up">
+    <div className="fixed top-20 right-4 z-[5000] w-80 md:w-96 animate-fade-in-up">
         <div className="bg-white rounded-[2rem] shadow-2xl border border-gray-100 overflow-hidden relative">
             <div className="bg-gray-900 p-4 flex justify-between items-center text-white">
                 <h4 className="font-brand font-black text-sm uppercase tracking-widest flex items-center gap-2">

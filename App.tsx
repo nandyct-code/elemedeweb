@@ -37,6 +37,8 @@ import { EventRequestModal } from './components/EventRequestModal';
 import { NotificationCenter } from './components/NotificationCenter'; 
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { SweetBattle } from './components/SweetBattle';
+import { StoryViewer } from './components/StoryViewer';
+import { SweetFinder } from './components/SweetFinder'; // IMPORTED
 
 // Modals
 import { AuthModal } from './components/AuthModal';
@@ -94,8 +96,11 @@ export const App = () => {
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [viewedBusiness, setViewedBusiness] = useState<Business | null>(null);
+  const [activeStoryBusiness, setActiveStoryBusiness] = useState<Business | null>(null); // NEW: Story Viewer State
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  // NEW: State to track which business is being requested in the event modal
+  const [eventTargetBusinessId, setEventTargetBusinessId] = useState<string | null>(null);
 
   // Footer/Info Modals State
   const [infoModalState, setInfoModalState] = useState<{ open: boolean; title: string; content: string }>({ open: false, title: '', content: '' });
@@ -144,11 +149,6 @@ export const App = () => {
 
     initApp();
   }, []);
-
-  // --- PHASE 2 CORRECTION: BILLING ---
-  // The client-side auto-billing loop has been removed to comply with security standards.
-  // Billing is now a server-side process located in stripeService.processRecurringBilling
-  // which can be triggered manually by Admins in the Dashboard or via Webhooks.
 
   // --- PWA INSTALLATION EVENT ---
   useEffect(() => {
@@ -445,7 +445,28 @@ export const App = () => {
       setLeads(prev => [lead, ...prev]);
       // (Data service persist normally here)
       
-      // 1. Intelligent Matching Logic
+      // Check if this lead was targeted to a specific business
+      if (lead.targetBusinessId) {
+          const targetBiz = businesses.find(b => b.id === lead.targetBusinessId);
+          if (targetBiz) {
+              // Direct notification for targeted lead
+              const newCampaign: PushCampaign = {
+                  id: `push_direct_${Date.now()}_${targetBiz.id}`,
+                  businessId: targetBiz.id,
+                  businessName: "Sistema ELEMEDE",
+                  message: `¡Nueva solicitud directa! ${lead.clientName} te ha pedido presupuesto para ${lead.eventType.toUpperCase()}.`,
+                  sentAt: new Date().toISOString(),
+                  expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), // 48h priority
+                  reach: 1, 
+                  cost: 0 
+              };
+              setPushCampaigns(prev => [newCampaign, ...prev]);
+              alert(`¡Solicitud enviada directamente a ${targetBiz.name}! Te responderán en breve.`);
+              return;
+          }
+      }
+
+      // 1. Intelligent Matching Logic (For general leads)
       const matchingBusinesses = businesses.filter(biz => {
           // A. Province Match (Fuzzy)
           const locationMatch = lead.location.toLowerCase().includes(biz.city.toLowerCase()) || 
@@ -522,6 +543,14 @@ export const App = () => {
       setInfoModalState({ open: true, title, content });
   };
 
+  // HANDLER FOR OPENING EVENT MODAL FROM BUSINESS PROFILE
+  const handleOpenEventModalForBusiness = (targetBizId: string) => {
+      setEventTargetBusinessId(targetBizId);
+      // If user not logged in, show auth or just let them open modal?
+      // Modal handles login state inside
+      setIsEventModalOpen(true);
+  };
+
   if (isAppLoading) {
       return (
           <div className="fixed inset-0 flex flex-col items-center justify-center bg-orange-50 z-50">
@@ -531,6 +560,9 @@ export const App = () => {
           </div>
       );
   }
+
+  // FIX: Allow Business Owners and Admins to bypass maintenance if logged in
+  const isMaintenanceRestricted = maintenanceMode && (!currentUser || (currentUser.role !== 'admin_root' && !currentUser.role.includes('admin') && !currentUser.role.includes('master') && currentUser.role !== 'business_owner'));
 
   return (
     <div className="min-h-screen bg-white font-brand text-gray-900 relative selection:bg-pink-200 selection:text-pink-900">
@@ -552,13 +584,49 @@ export const App = () => {
       
       {isAdminDashboardOpen && currentUser && <AdminDashboard isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)} currentUser={currentUser} businesses={businesses} onUpdateBusiness={handleUpdateBusiness} users={users} onUpdateUser={handleUpdateUser} onUpdateUserStatus={(id, status) => setUsers(prev => prev.map(u => u.id === id ? { ...u, status } : u))} onDeleteUser={(id) => setUsers(prev => prev.filter(u => u.id !== id))} onDeleteBusiness={(id) => setBusinesses(prev => prev.filter(b => b.id !== id))} invoices={invoices} setInvoices={setInvoices} banners={banners} onUpdateBanners={setBanners} maintenanceMode={maintenanceMode} setMaintenanceMode={setMaintenanceMode} onLogout={handleLogout} onSwitchSession={setCurrentUser} tickets={tickets} onUpdateTicket={(id, updates) => setTickets(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))} bannedWords={bannedWords} setBannedWords={setBannedWords} coupons={coupons} setCoupons={setCoupons} forumQuestions={forumQuestions} onDeleteForumQuestion={handleDeleteQuestion} socialLinks={socialLinks} setSocialLinks={setSocialLinks} systemFinancials={systemFinancials} setSystemFinancials={setSystemFinancials} subscriptionPacks={subscriptionPacks} setSubscriptionPacks={setSubscriptionPacks} />}
       {currentUser && isProfileModalOpen && <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={currentUser} businesses={businesses} onUpdateUser={handleUpdateUser} onUpdateBusiness={handleUpdateBusiness} onLogout={handleLogout} invoices={invoices} onGenerateInvoice={(inv) => { setInvoices(prev => [inv, ...prev]); dataService.createInvoice(inv); }} coupons={coupons} tickets={tickets} onCreateTicket={(t) => setTickets(prev => [...prev, t])} systemConfig={systemFinancials[currentCountryCode]} leads={leads} onSendPush={handleNewPushCampaign} />}
-      {viewedBusiness && <BusinessProfileModal isOpen={!!viewedBusiness} onClose={() => setViewedBusiness(null)} business={viewedBusiness} currentUser={currentUser} onAddRating={handleAddRating} onLoginRequest={() => { setViewedBusiness(null); setIsAuthModalOpen(true); }} />}
+      
+      {/* UPDATED: Business Profile Modal with Targeting Handler */}
+      {viewedBusiness && (
+          <BusinessProfileModal 
+              isOpen={!!viewedBusiness} 
+              onClose={() => setViewedBusiness(null)} 
+              business={viewedBusiness} 
+              currentUser={currentUser} 
+              onAddRating={handleAddRating} 
+              onLoginRequest={() => { setViewedBusiness(null); setIsAuthModalOpen(true); }}
+              onRequestQuote={() => {
+                  setEventTargetBusinessId(viewedBusiness.id); // Set target
+                  setViewedBusiness(null); // Optionally close profile or keep it open? Closing for cleaner modal stack
+                  setIsEventModalOpen(true);
+              }}
+          />
+      )}
+
       {welcomeData && <WelcomeSuccessBanner businessName={welcomeData.name} planId={welcomeData.plan} onContinue={() => { setWelcomeData(null); setIsProfileModalOpen(true); }} />}
       {marketingBanner && <MarketingOverlay banner={marketingBanner} onClose={() => { sessionStorage.setItem(`seen_banner_${marketingBanner.id}`, 'true'); setMarketingBanner(null); }} onInterest={() => { if (marketingBanner.linkedBusinessId) { const biz = businesses.find(b => b.id === marketingBanner.linkedBusinessId); if (biz) setViewedBusiness(biz); } setMarketingBanner(null); }} />}
       <InfoModal isOpen={infoModalState.open} onClose={() => setInfoModalState({ ...infoModalState, open: false })} title={infoModalState.title} content={infoModalState.content} />
       <ContactModal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} />
-      <EventRequestModal isOpen={isEventModalOpen} onClose={() => setIsEventModalOpen(false)} currentUser={currentUser} onSubmit={handleNewLead} onRequestLogin={() => { setIsEventModalOpen(false); setIsAuthModalOpen(true); }} />
-      {maintenanceMode && !currentUser?.role.includes('admin') && !currentUser?.role.includes('master') && <MaintenanceScreen onUnlockAttempt={handleMaintenanceUnlock} />}
+      
+      {/* UPDATED: Event Modal with target Business prop */}
+      <EventRequestModal 
+          isOpen={isEventModalOpen} 
+          onClose={() => { setIsEventModalOpen(false); setEventTargetBusinessId(null); }} 
+          currentUser={currentUser} 
+          onSubmit={handleNewLead} 
+          onRequestLogin={() => { setIsEventModalOpen(false); setIsAuthModalOpen(true); }} 
+          targetBusiness={eventTargetBusinessId ? businesses.find(b => b.id === eventTargetBusinessId) : undefined}
+      />
+      
+      {/* STORY VIEWER OVERLAY */}
+      {activeStoryBusiness && (
+          <StoryViewer 
+              business={activeStoryBusiness} 
+              onClose={() => setActiveStoryBusiness(null)} 
+              onViewProfile={() => { setViewedBusiness(activeStoryBusiness); setActiveStoryBusiness(null); }}
+          />
+      )}
+
+      {isMaintenanceRestricted && <MaintenanceScreen onUnlockAttempt={handleMaintenanceUnlock} />}
       
       {/* Social Sidebar with PWA Install Logic */}
       <SocialSidebar 
@@ -587,7 +655,7 @@ export const App = () => {
 
       {/* --- FLOATING EVENT BUTTON --- */}
       <button 
-          onClick={() => setIsEventModalOpen(true)}
+          onClick={() => { setEventTargetBusinessId(null); setIsEventModalOpen(true); }}
           className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[60] bg-gray-900 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform group flex items-center gap-0 hover:gap-3 overflow-hidden border-4 border-white"
       >
           <span className="text-2xl">🎉</span>
@@ -641,41 +709,53 @@ export const App = () => {
       <StoryRail 
           businesses={businesses} 
           onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
+          onViewStory={(id) => setActiveStoryBusiness(businesses.find(b => b.id === id) || null)}
           sectorFilter={activeSector}
       />
 
       {/* --- MAIN CONTENT --- */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-16">
         
-        {/* 1. PRESENTATION (HERO) */}
+        {/* 1. PRESENTATION (HERO) OR AI FINDER */}
         {!activeSector && (
-            <section className="text-center space-y-6 py-20 md:py-28 relative bg-gradient-to-b from-orange-100/50 via-pink-100/30 to-white/0 rounded-[4rem] mx-2 sm:mx-8 shadow-sm border border-orange-50/50 overflow-hidden">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-orange-200/30 to-pink-200/30 rounded-full blur-3xl -z-10 animate-pulse-slow"></div>
-                
-                {/* Floating Sector Icons */}
-                <div className="absolute top-10 left-10 text-6xl opacity-20 animate-bounce delay-100 hidden md:block">🧁</div>
-                <div className="absolute bottom-10 right-10 text-6xl opacity-20 animate-bounce delay-300 hidden md:block">🍰</div>
+            <>
+                <section className="text-center space-y-6 py-10 md:py-20 relative bg-gradient-to-b from-orange-100/50 via-pink-100/30 to-white/0 rounded-[4rem] mx-2 sm:mx-8 shadow-sm border border-orange-50/50 overflow-hidden">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-orange-200/30 to-pink-200/30 rounded-full blur-3xl -z-10 animate-pulse-slow"></div>
+                    
+                    {/* Floating Sector Icons */}
+                    <div className="absolute top-10 left-10 text-6xl opacity-20 animate-bounce delay-100 hidden md:block">🧁</div>
+                    <div className="absolute bottom-10 right-10 text-6xl opacity-20 animate-bounce delay-300 hidden md:block">🍰</div>
 
-                <h2 className="text-4xl md:text-6xl lg:text-7xl font-brand font-black text-gray-900 tracking-tighter leading-tight relative z-10">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-pink-500">Elemede</span>
-                </h2>
-                <p className="text-lg md:text-xl text-gray-600 font-medium max-w-2xl mx-auto relative z-10">
-                    Un mundo dulce a un solo click.
-                </p>
+                    <h2 className="text-4xl md:text-6xl lg:text-7xl font-brand font-black text-gray-900 tracking-tighter leading-tight relative z-10">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-pink-500">Elemede</span>
+                    </h2>
+                    <p className="text-lg md:text-xl text-gray-600 font-medium max-w-2xl mx-auto relative z-10 mb-8">
+                        Un mundo dulce a un solo click.
+                    </p>
 
-                {/* HOME BANNERS - Header Position */}
-                <div className="max-w-4xl mx-auto mt-8 px-4">
-                    <BannerManager 
-                        banners={banners} 
-                        businesses={businesses} 
-                        context="home" 
-                        userLocation={userLocation}
-                        maxBanners={1}
-                        onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
-                        onSelectSector={(id) => setActiveSector(id)}
-                    />
-                </div>
-            </section>
+                    {/* NEW: AI SWEET FINDER */}
+                    <div className="max-w-4xl mx-auto relative z-20 px-4">
+                        <SweetFinder 
+                            businesses={businesses} 
+                            onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)}
+                            userLocation={userLocation || undefined}
+                        />
+                    </div>
+
+                    {/* HOME BANNERS - Header Position */}
+                    <div className="max-w-4xl mx-auto mt-8 px-4">
+                        <BannerManager 
+                            banners={banners} 
+                            businesses={businesses} 
+                            context="home" 
+                            userLocation={userLocation}
+                            maxBanners={1}
+                            onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
+                            onSelectSector={(id) => setActiveSector(id)}
+                        />
+                    </div>
+                </section>
+            </>
         )}
 
         {/* 2. SECTOR NAVIGATION */}

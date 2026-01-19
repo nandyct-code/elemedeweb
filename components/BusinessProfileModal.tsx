@@ -9,10 +9,11 @@ interface BusinessProfileModalProps {
   currentUser: UserAccount | null;
   onAddRating: (businessId: string, rating: Rating) => void;
   onLoginRequest?: () => void;
+  onRequestQuote?: () => void; // NEW CALLBACK
 }
 
 export const BusinessProfileModal: React.FC<BusinessProfileModalProps> = ({ 
-  isOpen, onClose, business, currentUser, onAddRating, onLoginRequest 
+  isOpen, onClose, business, currentUser, onAddRating, onLoginRequest, onRequestQuote 
 }) => {
   const [stars, setStars] = useState(5);
   const [comment, setComment] = useState('');
@@ -117,7 +118,12 @@ export const BusinessProfileModal: React.FC<BusinessProfileModalProps> = ({
   };
 
   const handleEventQuote = () => {
-      alert("Para presupuestos personalizados, contacta directamente por teléfono o visítanos. Tenemos tus datos de invitado guardados.");
+      // Trigger App.tsx handler
+      if (onRequestQuote) {
+          onRequestQuote();
+      } else {
+          alert("Por favor, utilice el botón 'Organizar Evento' en el menú principal para contactar.");
+      }
   };
 
   if (!isOpen) return null;
@@ -204,6 +210,16 @@ export const BusinessProfileModal: React.FC<BusinessProfileModalProps> = ({
                     <div className="min-w-0">
                        <p className="font-bold text-gray-900 text-xs sm:text-sm">{business.address}, {business.cp} {business.city}</p>
                        <p className="text-[10px] font-black text-gray-400 mt-1">📞 {business.phone}</p>
+                       
+                       {/* SEDES ADICIONALES FIX */}
+                       {business.direccionesAdicionales && business.direccionesAdicionales.length > 0 && (
+                           <div className="mt-3 space-y-2 border-t border-orange-200 pt-2">
+                               <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest">Otras Sedes</p>
+                               {business.direccionesAdicionales.map((sede, idx) => (
+                                   <p key={idx} className="text-xs text-gray-600 font-bold">📍 {sede.calle}, {sede.ciudad}</p>
+                               ))}
+                           </div>
+                       )}
                     </div>
                   </div>
                 </div>

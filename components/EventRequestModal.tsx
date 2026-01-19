@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Lead, UserAccount } from '../types';
+import { Lead, UserAccount, Business } from '../types';
 
 interface EventRequestModalProps {
   isOpen: boolean;
@@ -8,9 +8,10 @@ interface EventRequestModalProps {
   currentUser: UserAccount | null;
   onSubmit: (lead: Lead) => void;
   onRequestLogin: () => void;
+  targetBusiness?: Business; // NEW PROP
 }
 
-export const EventRequestModal: React.FC<EventRequestModalProps> = ({ isOpen, onClose, currentUser, onSubmit, onRequestLogin }) => {
+export const EventRequestModal: React.FC<EventRequestModalProps> = ({ isOpen, onClose, currentUser, onSubmit, onRequestLogin, targetBusiness }) => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
       eventType: 'boda',
@@ -41,7 +42,8 @@ export const EventRequestModal: React.FC<EventRequestModalProps> = ({ isOpen, on
           location: formData.location,
           clientName: currentUser.name,
           clientContact: formData.contactPhone || currentUser.email,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          targetBusinessId: targetBusiness?.id // Link to target if exists
       };
 
       onSubmit(newLead);
@@ -54,7 +56,13 @@ export const EventRequestModal: React.FC<EventRequestModalProps> = ({ isOpen, on
             <div className="bg-gradient-to-r from-pink-500 to-orange-500 p-8 text-white relative">
                 <button onClick={onClose} className="absolute top-6 right-6 text-white/80 hover:text-white text-xl font-black">✕</button>
                 <h3 className="text-3xl font-brand font-black uppercase italic tracking-tighter">Organiza tu Evento</h3>
-                <p className="text-xs font-bold uppercase tracking-widest opacity-90 mt-2">Conecta con los mejores obradores</p>
+                {targetBusiness ? (
+                    <div className="mt-2 bg-white/20 backdrop-blur px-3 py-1 rounded-lg inline-block">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white">Solicitud directa a: {targetBusiness.name}</p>
+                    </div>
+                ) : (
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-90 mt-2">Conecta con los mejores obradores</p>
+                )}
             </div>
 
             <div className="p-8 overflow-y-auto">

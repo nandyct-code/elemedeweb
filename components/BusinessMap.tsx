@@ -60,6 +60,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     return Math.round(R * c);
   };
 
+  // 1. INITIALIZE MAP (ONCE)
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
 
@@ -79,16 +80,23 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     };
   }, []);
 
+  // 2. UPDATE VIEW ONLY WHEN CENTER CHANGES EXPLICITLY (USER CHANGE)
+  // This prevents "hijacking" when filtering businesses while panning
+  useEffect(() => {
+      if (leafletMap.current) {
+          leafletMap.current.setView([center.lat, center.lng], 13);
+      }
+  }, [center.lat, center.lng]);
+
+  // 3. UPDATE MARKERS (DATA CHANGES)
   useEffect(() => {
     if (!leafletMap.current || !markersLayer.current) return;
-
-    // Update View
-    leafletMap.current.setView([center.lat, center.lng]);
 
     markersLayer.current.clearLayers();
 
     // Dibujar radio de búsqueda (Visual Reference Only)
-    const circle = L.circle([center.lat, center.lng], {
+    // NOTE: Radius circle is drawn at the CENTER prop, not necessarily map center
+    L.circle([center.lat, center.lng], {
       color: '#ff4d00',
       fillColor: '#ff4d00',
       fillOpacity: 0.05,
@@ -106,10 +114,6 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     }).addTo(markersLayer.current).bindPopup("<b>Estás aquí</b>");
 
     // Añadir marcadores de negocios
-    // NOTE: We trust the parent (App.tsx) has already filtered the 'businesses' array
-    // based on user location proximity and subscription visibility rules.
-    // So we display EVERYTHING passed here without internal radius clipping.
-    
     businesses.forEach(biz => {
       // 1. MAIN HQ MARKER
       const mainDist = calculateDistance(center.lat, center.lng, biz.lat, biz.lng);
@@ -212,7 +216,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
           });
       }
     });
-  }, [businesses, center, radius, onViewBusiness, userLocation]);
+  }, [businesses, radius, onViewBusiness, userLocation]); // removed 'center' dependency from marker updates to prevent flicker, but radius update needs redraw
 
   return (
     <div className="relative h-[600px] w-full shadow-2xl overflow-hidden rounded-[3rem] border-8 border-white group">

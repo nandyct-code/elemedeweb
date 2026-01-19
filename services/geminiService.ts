@@ -274,9 +274,9 @@ export const findNearbySweetSpots = async (
         };
     }
     
-    // Using Google Search Grounding to find real places
+    // FIX: Using Gemini Pro for Search Grounding (More Reliable)
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview", // UPDATED MODEL
       contents: `Encuentra 3 lugares reales y excelentes para comer "${queryType}" cerca de las coordenadas ${location.latitude}, ${location.longitude}. 
       Proporciona un resumen introductorio corto y motivador.`,
       config: {

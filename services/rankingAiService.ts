@@ -69,13 +69,18 @@ export const calculateRankingScore = (
     userLat: number, 
     userLng: number, 
     packs: SubscriptionPack[],
-    maxRadius: number
+    systemMaxRadius: number // Deprecated logic, kept for signature compat but unused for proximity denominator
 ): number => {
     // 1. PROXIMITY SCORE (0-100)
-    // Usamos una caída lineal inversa. Si está a 0m = 100, si está a maxRadius = 0.
+    // FIX: Usar el radio de visibilidad ESPECÍFICO del plan contratado en lugar del tope del sistema.
+    // Esto evita que los planes "Super Top" (20km) reciban score 0 si están a 6km (cuando el sistema base es 5km).
+    const pack = packs.find(p => p.id === business.packId);
+    const effectiveRadius = pack ? pack.visibilityRadius : systemMaxRadius;
+
     const dist = calculateDistance(userLat, userLng, business.lat, business.lng);
-    // Si está fuera del radio, el score de proximidad es 0 (o negativo penalizante)
-    const proximityScore = dist > maxRadius ? 0 : Math.max(0, 100 * (1 - (dist / maxRadius)));
+    
+    // Caída lineal: 100 si estás al lado, 0 si estás en el límite de TU radio.
+    const proximityScore = dist > effectiveRadius ? 0 : Math.max(0, 100 * (1 - (dist / effectiveRadius)));
 
     // 2. PLAN SCORE (0-100)
     const planScore = getPlanScore(business.packId, packs);

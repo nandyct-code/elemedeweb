@@ -6,7 +6,8 @@ import { SECTORS, SUBSCRIPTION_PACKS, BANNER_1_DAY_PRICE, BANNER_7_DAYS_PRICE, B
 import { sendNotification } from '../services/notificationService';
 import { stripeService } from '../services/stripeService';
 import { uploadBusinessImage } from '../services/supabase';
-import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X, Wand2 } from 'lucide-react';
+import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X, Wand2, Eye } from 'lucide-react';
+import { SweetGenerator } from './SweetGenerator'; // Import for "Crecimiento" tab
 
 const adPrices: Record<AdRequestType, { final: number }> = {
   '1_day': { final: BANNER_1_DAY_PRICE },
@@ -57,23 +58,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [storyText, setStoryText] = useState('');
   const [storyMediaType, setStoryMediaType] = useState<'image' | 'video'>('image'); 
   
-  // Custom Banner Upload State
-  const [customBannerMode, setCustomBannerMode] = useState(false);
-  const [customBannerImage, setCustomBannerImage] = useState('');
-  const bannerInputRef = useRef<HTMLInputElement>(null);
-
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [ticketSubject, setTicketSubject] = useState('');
   const [ticketDesc, setTicketDesc] = useState('');
   const [ticketDept, setTicketDept] = useState<'marketing' | 'admin' | 'tecnico' | 'contabilidad'>('tecnico');
-  const [pushMessage, setPushMessage] = useState('');
-  const [isSendingPush, setIsSendingPush] = useState(false);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [cancellationDate, setCancellationDate] = useState<string | null>(null);
-  const [isEditingCard, setIsEditingCard] = useState(false);
-  const [newCardData, setNewCardData] = useState({ number: '', expiry: '', cvc: '', name: '' });
-  const [isSavingCard, setIsSavingCard] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Business>>({});
   const [openingHours, setOpeningHours] = useState<Record<string, OpeningHours>>({});
 
@@ -87,8 +76,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     user.linkedBusinessId ? businesses.find(b => b.id === user.linkedBusinessId) : null
   , [user.linkedBusinessId, businesses]);
 
-  // ... (Effects for business data loading) ...
-  
+  // --- FILTRADO INTELIGENTE DE LEADS (PRIVACIDAD) ---
+  const compatibleLeads = useMemo(() => {
+      if (!business || !leads) return [];
+      
+      return leads.filter(lead => {
+          // 1. Filtro Geográfico (Ciudad/Provincia)
+          const leadLoc = lead.location.toLowerCase();
+          const bizCity = business.city.toLowerCase();
+          const bizProv = business.province.toLowerCase();
+          
+          // Si el lead menciona la ciudad o provincia del negocio
+          const isLocationMatch = leadLoc.includes(bizCity) || leadLoc.includes(bizProv);
+          
+          // 2. Filtro de Sector (Opcional, pero recomendado)
+          // Mapeo simple: Boda -> Pasteleria/Mesas Dulces, etc.
+          let isSectorMatch = true;
+          // (Podríamos añadir lógica compleja aquí, por ahora confiamos en ubicación para máxima oportunidad)
+
+          return isLocationMatch;
+      });
+  }, [leads, business]);
+
   useEffect(() => {
       if (business) {
           setEditFormData({
@@ -157,6 +166,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           const totalCredits = pack.credits + pack.bonus;
           onUpdateBusiness(business.id, { credits: credits + totalCredits });
           alert(`✅ ¡Recarga exitosa! +${totalCredits} créditos añadidos.`);
+      }
+  };
+
+  const handleUnlockLead = (leadId: string) => {
+      if (!business) return;
+      if (credits < ACTION_COSTS.LEAD_UNLOCK) {
+          return alert(`Créditos insuficientes. Necesitas ${ACTION_COSTS.LEAD_UNLOCK} créditos.`);
+      }
+      if (confirm(`¿Desbloquear datos de contacto por ${ACTION_COSTS.LEAD_UNLOCK} créditos?`)) {
+          const unlocked = business.unlockedLeads || [];
+          onUpdateBusiness(business.id, { 
+              unlockedLeads: [...unlocked, leadId],
+              credits: credits - ACTION_COSTS.LEAD_UNLOCK
+          });
       }
   };
 
@@ -274,19 +297,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       }
   };
 
-  const handleSaveEditedImage = () => {
+  const handleSaveEditedImage = (replaceOriginal: boolean) => {
       if (!business || !editedImagePreview) return;
       
-      // Add as new image if space, else replace current
-      if (currentImagesCount >= limits.images) {
-          if (confirm("Límite de imágenes alcanzado. ¿Reemplazar la imagen original?")) {
-              if (editingImageIndex !== null) {
-                  const newImages = [...(business.images || [])];
-                  newImages[editingImageIndex] = editedImagePreview;
-                  onUpdateBusiness(business.id, { images: newImages });
-              }
-          }
+      // Check limits if adding new
+      if (!replaceOriginal && currentImagesCount >= limits.images) {
+          return alert(`Límite de imágenes (${limits.images}) alcanzado. Debes reemplazar.`);
+      }
+
+      if (replaceOriginal && editingImageIndex !== null) {
+          // OVERWRITE LOGIC
+          const newImages = [...(business.images || [])];
+          newImages[editingImageIndex] = editedImagePreview;
+          onUpdateBusiness(business.id, { images: newImages });
       } else {
+          // APPEND LOGIC
           onUpdateBusiness(business.id, { 
               images: [...(business.images || []), editedImagePreview] 
           });
@@ -334,6 +359,214 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         <main className="flex-1 p-4 sm:p-8 lg:p-12 overflow-y-auto scrollbar-hide bg-white relative">
            <div className="absolute top-6 right-6 hidden lg:block"><button onClick={onClose}>✕</button></div>
            
+           {/* --- BUSINESS MANAGEMENT (MONEDERO & STATS) --- */}
+           {activeTab === 'negocio' && business && (
+               <div className="space-y-8 animate-fade-in">
+                   {/* STATS HEADER */}
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="bg-gradient-to-br from-indigo-900 to-indigo-700 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
+                           <div className="absolute top-0 right-0 p-6 opacity-10"><Crown size={64}/></div>
+                           <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Monedero Sweet Credits</p>
+                           <h3 className="text-4xl font-black mt-2">{credits}</h3>
+                           <div className="mt-6 flex gap-2">
+                               {CREDIT_PACKS.map(pack => (
+                                   <button 
+                                       key={pack.id} 
+                                       onClick={() => handleBuyCredits(pack.id)}
+                                       className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-colors"
+                                   >
+                                       +{pack.credits} ({pack.price}€)
+                                   </button>
+                               ))}
+                           </div>
+                       </div>
+                       
+                       <div className="bg-white rounded-[2.5rem] p-8 shadow-lg border border-gray-100 flex flex-col justify-center">
+                           <div className="flex items-center gap-3 mb-2">
+                               <span className="text-2xl">👁️</span>
+                               <span className="text-xs font-bold text-gray-500 uppercase">Visualizaciones</span>
+                           </div>
+                           <h3 className="text-3xl font-black text-gray-900">{business.stats?.views || 0}</h3>
+                           <p className="text-[10px] text-green-500 font-bold mt-1">+12% este mes</p>
+                       </div>
+
+                       <div className="bg-white rounded-[2.5rem] p-8 shadow-lg border border-gray-100 flex flex-col justify-center">
+                           <div className="flex items-center gap-3 mb-2">
+                               <span className="text-2xl">⚡</span>
+                               <span className="text-xs font-bold text-gray-500 uppercase">Suscripción</span>
+                           </div>
+                           <h3 className="text-2xl font-black text-gray-900 uppercase">{currentPack?.label || 'FREE'}</h3>
+                           <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-widest">
+                               Ciclo: {business.billingCycle === 'annual' ? 'Anual' : 'Mensual'}
+                           </p>
+                       </div>
+                   </div>
+
+                   {/* EDIT FORM (SIMPLIFIED) */}
+                   <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
+                       <h4 className="font-black text-gray-900 uppercase italic mb-6">Datos Básicos</h4>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase">Nombre</label>
+                               <input className="w-full bg-white border border-gray-200 p-3 rounded-xl font-bold text-sm mt-1" value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} />
+                           </div>
+                           <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase">Teléfono</label>
+                               <input className="w-full bg-white border border-gray-200 p-3 rounded-xl font-bold text-sm mt-1" value={editFormData.phone} onChange={e => setEditFormData({...editFormData, phone: e.target.value})} />
+                           </div>
+                           <div className="md:col-span-2">
+                               <label className="text-[9px] font-black text-gray-400 uppercase">Descripción</label>
+                               <textarea className="w-full bg-white border border-gray-200 p-3 rounded-xl font-medium text-sm mt-1 h-24" value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} />
+                           </div>
+                       </div>
+                       <div className="mt-6 text-right">
+                           <button onClick={() => { onUpdateBusiness(business.id, editFormData); alert('Datos guardados'); }} className="bg-gray-900 text-white px-6 py-3 rounded-xl font-black text-xs uppercase hover:bg-orange-600 transition-all">Guardar Cambios</button>
+                       </div>
+                   </div>
+               </div>
+           )}
+
+           {/* --- LEADS TAB (OPPORTUNITIES & REQUESTS) --- */}
+           {activeTab === 'leads' && (
+               <div className="space-y-8 animate-fade-in">
+                   {user.role === 'business_owner' ? (
+                       // VIEW FOR BUSINESS
+                       <>
+                           <div className="bg-indigo-50 p-6 rounded-[2rem] flex items-center justify-between border border-indigo-100">
+                               <div>
+                                   <h3 className="text-xl font-black text-indigo-900 uppercase italic">Oportunidades de Negocio</h3>
+                                   <p className="text-xs text-indigo-600 font-bold">Solicitudes de eventos en tu zona ({business?.province})</p>
+                               </div>
+                               <div className="bg-white px-4 py-2 rounded-xl text-xs font-black shadow-sm">
+                                   Saldo: {credits} Créditos
+                               </div>
+                           </div>
+                           
+                           {compatibleLeads.length === 0 ? (
+                               <div className="text-center py-20 bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
+                                   <p className="text-gray-400 font-bold uppercase text-xs tracking-widest">
+                                       No hay solicitudes activas en {business?.province} por ahora.
+                                   </p>
+                               </div>
+                           ) : (
+                               <div className="space-y-4">
+                                   {compatibleLeads.map(lead => {
+                                       const isUnlocked = business?.unlockedLeads?.includes(lead.id);
+                                       return (
+                                           <div key={lead.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg relative overflow-hidden group">
+                                               <div className="flex justify-between items-start mb-4">
+                                                   <div>
+                                                       <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">{lead.eventType}</span>
+                                                       <h4 className="text-lg font-black text-gray-900 mt-2">{lead.location}</h4>
+                                                       <p className="text-xs text-gray-500 font-bold">{lead.date} • {lead.guests} Pax • Presupuesto: {lead.budget}</p>
+                                                   </div>
+                                                   {isUnlocked ? (
+                                                       <div className="bg-green-100 text-green-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2">
+                                                           <CheckCircle size={14}/> Contacto Visible
+                                                       </div>
+                                                   ) : (
+                                                       <div className="bg-gray-100 text-gray-500 px-4 py-2 rounded-xl text-[10px] font-black uppercase">
+                                                           Bloqueado
+                                                       </div>
+                                                   )}
+                                               </div>
+                                               
+                                               <div className={`p-4 rounded-xl border-2 ${isUnlocked ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100 filter blur-[2px] select-none'}`}>
+                                                   <p className="font-bold text-sm mb-1">{lead.clientName}</p>
+                                                   <p className="text-xs font-mono">{isUnlocked ? lead.clientContact : 'content-hidden-until-unlock'}</p>
+                                                   <p className="text-xs text-gray-600 mt-2 italic">"{lead.description}"</p>
+                                               </div>
+
+                                               {!isUnlocked && (
+                                                   <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity">
+                                                       <button 
+                                                           onClick={() => handleUnlockLead(lead.id)}
+                                                           className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase shadow-xl hover:bg-indigo-700 transition-all transform hover:scale-105"
+                                                       >
+                                                           Desbloquear ({ACTION_COSTS.LEAD_UNLOCK} Créditos)
+                                                       </button>
+                                                   </div>
+                                               )}
+                                           </div>
+                                       );
+                                   })}
+                               </div>
+                           )}
+                       </>
+                   ) : (
+                       // VIEW FOR USER (MY REQUESTS)
+                       <>
+                           <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-6">Mis Solicitudes</h3>
+                           <div className="space-y-4">
+                               {leads.filter(l => l.clientName === user.name).length === 0 ? (
+                                   <div className="text-center py-20 text-gray-400 font-bold uppercase text-xs">
+                                       No has enviado solicitudes aún.
+                                   </div>
+                               ) : (
+                                   leads.filter(l => l.clientName === user.name).map(lead => (
+                                       <div key={lead.id} className="bg-white p-6 rounded-[2rem] border-l-8 border-l-orange-400 shadow-md">
+                                           <div className="flex justify-between">
+                                               <h4 className="font-black text-gray-900">{lead.eventType.toUpperCase()}</h4>
+                                               <span className="text-xs font-bold text-gray-400">{lead.date}</span>
+                                           </div>
+                                           <p className="text-sm text-gray-600 mt-2">{lead.description}</p>
+                                           <div className="mt-4 flex gap-2">
+                                               <span className="bg-gray-100 px-3 py-1 rounded-full text-[10px] font-bold uppercase text-gray-500">Estado: Enviada</span>
+                                           </div>
+                                       </div>
+                                   ))
+                               )}
+                           </div>
+                       </>
+                   )}
+               </div>
+           )}
+
+           {/* --- FAVORITOS TAB --- */}
+           {activeTab === 'favoritos' && (
+               <div className="space-y-8 animate-fade-in">
+                   <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-6 flex items-center gap-3">
+                       <Heart className="text-red-500 fill-red-500" /> Mis Favoritos
+                   </h3>
+                   {user.favorites && user.favorites.length > 0 ? (
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           {user.favorites.map(favId => {
+                               const biz = businesses.find(b => b.id === favId);
+                               if (!biz) return null;
+                               return (
+                                   <div key={biz.id} className="bg-white p-4 rounded-[2rem] shadow-lg border border-gray-100 flex gap-4 items-center group cursor-pointer hover:shadow-xl transition-all" onClick={() => {/* Navigate logic could go here */}}>
+                                       <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 shrink-0">
+                                           <img src={biz.mainImage} className="w-full h-full object-cover" />
+                                       </div>
+                                       <div className="flex-1 min-w-0">
+                                           <h4 className="font-black text-gray-900 truncate">{biz.name}</h4>
+                                           <p className="text-xs text-gray-500 uppercase tracking-wide font-bold">{biz.sectorId.replace('_',' ')}</p>
+                                           <p className="text-[10px] text-gray-400 truncate mt-1">📍 {biz.address}</p>
+                                       </div>
+                                       <button 
+                                           onClick={(e) => {
+                                               e.stopPropagation();
+                                               const newFavs = user.favorites?.filter(id => id !== biz.id);
+                                               onUpdateUser({...user, favorites: newFavs});
+                                           }}
+                                           className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
+                                       >
+                                           ✕
+                                       </button>
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   ) : (
+                       <div className="text-center py-20 bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
+                           <Heart size={48} className="mx-auto text-gray-300 mb-4" />
+                           <p className="text-gray-400 font-bold uppercase text-xs tracking-widest">Aún no tienes favoritos guardados.</p>
+                       </div>
+                   )}
+               </div>
+           )}
+
+           {/* --- MEDIA TAB (EXISTING + REFINED) --- */}
            {activeTab === 'media' && business && (
                <div className="space-y-8 animate-fade-in">
                    {/* STORY UPLOAD SECTION */}
@@ -379,7 +612,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                </div>
            )}
 
-           {/* EDIT OVERLAY */}
+           {/* --- GROWTH TAB (NEW SWEET GENERATOR) --- */}
+           {activeTab === 'crecimiento' && business && (
+               <div className="space-y-8 animate-fade-in">
+                   <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-[3rem] p-8 text-white shadow-2xl relative overflow-hidden">
+                       <div className="absolute top-0 right-0 p-8 opacity-20"><Sparkles size={120} /></div>
+                       <h3 className="text-3xl font-black uppercase italic tracking-tighter mb-2">IA Content Studio</h3>
+                       <p className="text-sm font-medium text-indigo-200 max-w-lg mb-6">Genera descripciones irresistibles y previsualiza ideas para tus próximos productos usando nuestra inteligencia artificial.</p>
+                       
+                       <SweetGenerator activeSector={business.sectorId} />
+                   </div>
+               </div>
+           )}
+
+           {/* EDIT OVERLAY (PRESERVED) */}
            {editingImageIndex !== null && business?.images && (
                <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl p-8 shadow-2xl flex flex-col md:flex-row gap-8 relative overflow-hidden">
@@ -426,12 +672,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                    <Sparkles size={16} /> Generar Cambio
                                </button>
                                {editedImagePreview && (
-                                   <button 
-                                       onClick={handleSaveEditedImage}
-                                       className="w-full bg-green-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-green-700 transition-all shadow-lg"
-                                   >
-                                       Guardar Resultado
-                                   </button>
+                                   <div className="grid grid-cols-2 gap-2 animate-fade-in-up">
+                                       <button 
+                                           onClick={() => handleSaveEditedImage(true)} // REPLACE
+                                           className="bg-red-50 text-red-600 border border-red-200 py-3 rounded-xl font-black uppercase text-[9px] hover:bg-red-100 transition-colors"
+                                       >
+                                           Reemplazar Original
+                                       </button>
+                                       <button 
+                                           onClick={() => handleSaveEditedImage(false)} // SAVE NEW
+                                           className="bg-green-600 text-white py-3 rounded-xl font-black uppercase text-[9px] hover:bg-green-700 transition-colors shadow-lg"
+                                       >
+                                           Guardar Copia
+                                       </button>
+                                   </div>
                                )}
                            </div>
                        </div>
@@ -439,7 +693,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                </div>
            )}
 
-           {activeTab !== 'media' && activeTab !== 'perfil' && (
+           {activeTab !== 'media' && activeTab !== 'perfil' && activeTab !== 'negocio' && activeTab !== 'leads' && activeTab !== 'favoritos' && activeTab !== 'crecimiento' && (
                <div className="text-center py-20">
                    <p className="text-gray-400 font-bold uppercase text-xs">Sección {activeTab} en construcción.</p>
                </div>

@@ -1,7 +1,7 @@
 
 import { SectorInfo, SubscriptionPack, Business, UserAccount, SaaSMetrics, SupportTicket, AuditLog, ForumQuestion, Invoice, DiscountCode, Banner, Contract, EmailTemplate, AdvertisingSupplement, CountryConfig, SystemFinancialConfig, SocialConfig, CountryCode, GovernanceRule, Lead } from './types';
 
-export const MAX_SYSTEM_RADIUS = 5000; // Radio base 5km
+export const MAX_SYSTEM_RADIUS = 20000; // Radio base 20km (Matches Super Top visibility)
 // PRECIOS REDONDOS (IVA INCLUIDO)
 export const MICRO_PAYMENT_AMOUNT = 2.00; // Coste notificación Push Flash
 export const LEAD_UNLOCK_PRICE = 3.00; // Coste desbloqueo Lead

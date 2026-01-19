@@ -262,6 +262,7 @@ export interface Lead {
   clientName: string;
   clientContact: string; // Hidden until unlocked
   createdAt: string;
+  targetBusinessId?: string; // NEW: If lead is direct request to a business
 }
 
 // --- NEW INTELLIGENCE TYPES ---
