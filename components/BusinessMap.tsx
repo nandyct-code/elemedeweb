@@ -64,13 +64,30 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
 
-    leafletMap.current = L.map(mapRef.current).setView([center.lat, center.lng], 13);
+    // LIMITES NACIONALES (España Peninsular + Islas)
+    // Sur-Oeste: 27.0, -19.0 (Canarias)
+    // Nor-Este: 44.5, 5.0 (Pirineos/Menorca)
+    const SPAIN_BOUNDS: L.LatLngBoundsExpression = [
+        [27.0, -19.0], 
+        [44.5, 5.0]
+    ];
+
+    leafletMap.current = L.map(mapRef.current, {
+        minZoom: 5, // Zoom mínimo para ver el país entero, no más lejos (Internacional bloqueado)
+        maxZoom: 18,
+        maxBounds: SPAIN_BOUNDS, // Restringe la navegación a la zona nacional
+        maxBoundsViscosity: 1.0, // Rebote duro al intentar salir
+        zoomControl: false // Ocultamos el default para limpieza visual (opcional)
+    }).setView([40.4168, -3.7038], 6); // Vista inicial centrada en España (Zoom 6 = Comunidades)
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(leafletMap.current);
 
     markersLayer.current = L.layerGroup().addTo(leafletMap.current);
+
+    // Add Zoom Control manually at bottom right for better UX on mobile
+    L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
 
     return () => {
       if (leafletMap.current) {
@@ -81,10 +98,15 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
   }, []);
 
   // 2. UPDATE VIEW ONLY WHEN CENTER CHANGES EXPLICITLY (USER CHANGE)
-  // This prevents "hijacking" when filtering businesses while panning
   useEffect(() => {
       if (leafletMap.current) {
-          leafletMap.current.setView([center.lat, center.lng], 13);
+          // Si el usuario busca algo específico o se geolocaliza, hacemos zoom in (Nivel Ciudad)
+          // Si es la carga inicial genérica, mantenemos un zoom más abierto (Nivel Región/País)
+          const zoomLevel = radius < 10000 ? 14 : 10; 
+          leafletMap.current.flyTo([center.lat, center.lng], zoomLevel, {
+              animate: true,
+              duration: 1.5
+          });
       }
   }, [center.lat, center.lng]);
 
@@ -95,13 +117,14 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     markersLayer.current.clearLayers();
 
     // Dibujar radio de búsqueda (Visual Reference Only)
-    // NOTE: Radius circle is drawn at the CENTER prop, not necessarily map center
-    L.circle([center.lat, center.lng], {
-      color: '#ff4d00',
-      fillColor: '#ff4d00',
-      fillOpacity: 0.05,
-      radius: radius
-    }).addTo(markersLayer.current);
+    if (radius < 50000) { // Solo dibujar círculo si es una búsqueda local, no nacional
+        L.circle([center.lat, center.lng], {
+        color: '#ff4d00',
+        fillColor: '#ff4d00',
+        fillOpacity: 0.05,
+        radius: radius
+        }).addTo(markersLayer.current);
+    }
 
     // Marcador de usuario
     const userMarkerPos = userLocation || center;
