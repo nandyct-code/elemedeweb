@@ -152,6 +152,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const calculateFinancials = () => {
     if (!currentPack) return { base: 0, tax: 0, total: 0 };
     
+    // NOTE: All prices in constants are now treated as Tax Inclusive (Total)
     const planPrice = formData.billingCycle === 'annual' ? currentPack.annualPriceYear1 : currentPack.monthlyPrice;
     
     // ANNUAL FREE LOCATIONS LOGIC (1st Year)
@@ -169,18 +170,20 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     const extraLocationsPriceMonthly = billableLocations * currentPack.extraLocationPrice;
     const extraLocationsTotal = formData.billingCycle === 'annual' ? extraLocationsPriceMonthly * 12 : extraLocationsPriceMonthly;
     
-    let subtotal = planPrice + extraLocationsTotal;
+    // TOTAL GROSS (Before Tax Calculation)
+    let totalGross = planPrice + extraLocationsTotal;
 
     if (appliedCoupon) {
         if (appliedCoupon.type === 'porcentaje') {
-            const discountAmount = subtotal * (appliedCoupon.value! / 100);
-            subtotal = Math.max(0, subtotal - discountAmount);
+            const discountAmount = totalGross * (appliedCoupon.value! / 100);
+            totalGross = Math.max(0, totalGross - discountAmount);
         } else if (appliedCoupon.type === 'fijo') {
-            subtotal = Math.max(0, subtotal - appliedCoupon.value!);
+            totalGross = Math.max(0, totalGross - appliedCoupon.value!);
         }
     }
 
-    const { base, taxAmount, total } = stripeService.calculateFinancials(subtotal, countryFinancials.taxRate);
+    // Now extract tax from the final rounded total
+    const { base, taxAmount, total } = stripeService.calculateFinancials(totalGross, countryFinancials.taxRate);
     return { base, tax: taxAmount, total };
   };
 
@@ -266,7 +269,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             code: appliedCoupon.code,
             date: new Date().toISOString(),
             applied_to: 'plan_subscription' as CouponTarget,
-            savings_amount: (base + tax) - total // Simplification for savings calc
+            savings_amount: total // Simplification, savings is implicit in reduced total
         }] : undefined;
 
         sendNotification(
@@ -610,7 +613,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               {/* Resumen */}
               <div className="space-y-6">
-                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-widest mb-6">Resumen del Pedido</h3>
+                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-widest mb-6">Resumen del Pedido (IVA Incluido)</h3>
                   <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100 space-y-4">
                     <div className="flex justify-between items-center">
                         <span className="text-sm font-bold text-gray-600">Plan {currentPack?.label}</span>
@@ -629,7 +632,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                 )}
                             </span>
                             <span className="text-sm font-black text-gray-900">
-                                {(financials.total - financials.tax - (formData.billingCycle === 'annual' ? currentPack!.annualPriceYear1 : currentPack!.monthlyPrice)).toFixed(2)}{currentCountry.currencySymbol}
+                                {((formData.billingCycle === 'annual' ? currentPack!.extraLocationPrice * 12 : currentPack!.extraLocationPrice) * formData.sedes.length).toFixed(2)}{currentCountry.currencySymbol}
                             </span>
                         </div>
                     )}
@@ -661,14 +664,13 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                     </div>
 
                     <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
-                        <span className="text-sm font-bold text-gray-600">Impuestos ({countryFinancials.taxRate}%)</span>
-                        <span className="text-sm font-black text-orange-600">
-                            +{financials.tax.toFixed(2)}{currentCountry.currencySymbol}
-                        </span>
-                    </div>
-                    <div className="bg-gray-900 text-white p-6 rounded-2xl flex justify-between items-center mt-4">
-                        <span className="text-sm font-bold uppercase tracking-widest">Total a Pagar</span>
-                        <span className="text-2xl font-black">{financials.total.toFixed(2)}{currentCountry.currencySymbol}</span>
+                        <span className="text-sm font-bold text-gray-600">Total (IVA Incluido)</span>
+                        <div className="text-right">
+                            <span className="text-2xl font-black text-gray-900">{financials.total.toFixed(2)}{currentCountry.currencySymbol}</span>
+                            <div className="text-[9px] text-gray-400 font-bold uppercase">
+                                Base: {financials.base.toFixed(2)}€ | IVA: {financials.tax.toFixed(2)}€
+                            </div>
+                        </div>
                     </div>
                   </div>
               </div>
@@ -751,7 +753,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               {isProcessingPayment ? (
                   <><Loader2 className="animate-spin w-4 h-4" /> Procesando con Stripe...</>
               ) : (
-                  <><span>💳</span> Pagar y Activar</>
+                  <><span>💳</span> Pagar {financials.total.toFixed(2)}€ y Activar</>
               )}
             </button>
           )}

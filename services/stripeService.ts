@@ -20,13 +20,16 @@ interface FinancialResult {
 export const stripeService = {
   
   // Utility: Calculate Taxes locally for UI display
-  calculateFinancials: (baseAmount: number, taxRate: number = 21): FinancialResult => {
-    const taxAmount = baseAmount * (taxRate / 100);
-    const total = baseAmount + taxAmount;
+  // NOTE: This now takes the TOTAL (GROSS) amount and extracts tax backwards
+  calculateFinancials: (totalAmount: number, taxRate: number = 21): FinancialResult => {
+    // Formula: Base = Total / (1 + TaxRate/100)
+    const base = totalAmount / (1 + taxRate / 100);
+    const taxAmount = totalAmount - base;
+    
     return {
-      base: parseFloat(baseAmount.toFixed(2)),
+      base: parseFloat(base.toFixed(2)),
       taxAmount: parseFloat(taxAmount.toFixed(2)),
-      total: parseFloat(total.toFixed(2)),
+      total: parseFloat(totalAmount.toFixed(2)), // Should match input
       taxRate
     };
   },

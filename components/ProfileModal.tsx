@@ -8,12 +8,10 @@ import { stripeService } from '../services/stripeService';
 import { uploadBusinessImage } from '../services/supabase';
 import { Sparkles, Copy, Loader2, Zap, AlertTriangle, Clock, Calendar, Shield, Image as ImageIcon, Trash2, Star, CheckCircle, Smartphone, Mail, Globe, Lock, Crown, BarChart3, Tag, CreditCard, XCircle, FileText, PlusCircle, Package, Camera, Heart, Video, Save, X, Wand2 } from 'lucide-react';
 
-// ... (Rest of component setup)
-
-const adPrices: Record<AdRequestType, { base: number, final: number }> = {
-  '1_day': { base: 14.90, final: BANNER_1_DAY_PRICE },
-  '7_days': { base: 49.90, final: BANNER_7_DAYS_PRICE },
-  '14_days': { base: 89.90, final: BANNER_14_DAYS_PRICE }
+const adPrices: Record<AdRequestType, { final: number }> = {
+  '1_day': { final: BANNER_1_DAY_PRICE },
+  '7_days': { final: BANNER_7_DAYS_PRICE },
+  '14_days': { final: BANNER_14_DAYS_PRICE }
 };
 
 interface ProfileModalProps {
@@ -64,7 +62,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [customBannerImage, setCustomBannerImage] = useState('');
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  // ... (Other state variables: newPassword, ticketSubject, etc.) ...
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [ticketSubject, setTicketSubject] = useState('');
@@ -132,7 +129,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       const pack = CREDIT_PACKS.find(p => p.id === packId);
       if (!pack) return;
 
-      if (confirm(`¿Comprar ${pack.label} por ${pack.price}€?`)) {
+      if (confirm(`¿Comprar ${pack.label} por ${pack.price.toFixed(2)}€ (IVA incluido)?`)) {
+          // Calculate backwards from Total
+          const { base, taxAmount, total } = stripeService.calculateFinancials(pack.price, 21);
+
           const newInvoice: Invoice = {
               id: `INV-CREDIT-${Date.now()}`,
               business_id: business.id,
@@ -142,12 +142,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               client_nif: business.nif,
               date: new Date().toISOString().split('T')[0],
               due_date: new Date().toISOString().split('T')[0],
-              base_amount: pack.price / 1.21,
+              base_amount: base,
               iva_rate: 21,
-              iva_amount: pack.price - (pack.price / 1.21),
+              iva_amount: taxAmount,
               irpf_rate: 0,
               irpf_amount: 0,
-              total_amount: pack.price,
+              total_amount: total, // Should match pack.price (e.g., 20.00)
               status: 'paid',
               concept: `Recarga Sweet Credits: ${pack.label} (${pack.credits} + ${pack.bonus})`,
               quarter: Math.floor(new Date().getMonth() / 3) + 1
@@ -156,7 +156,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           
           const totalCredits = pack.credits + pack.bonus;
           onUpdateBusiness(business.id, { credits: credits + totalCredits });
-          alert(`✅ ¡Recarga exitosa! +${totalCredits} créditos.`);
+          alert(`✅ ¡Recarga exitosa! +${totalCredits} créditos añadidos.`);
       }
   };
 

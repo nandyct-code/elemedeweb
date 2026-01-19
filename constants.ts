@@ -2,20 +2,21 @@
 import { SectorInfo, SubscriptionPack, Business, UserAccount, SaaSMetrics, SupportTicket, AuditLog, ForumQuestion, Invoice, DiscountCode, Banner, Contract, EmailTemplate, AdvertisingSupplement, CountryConfig, SystemFinancialConfig, SocialConfig, CountryCode, GovernanceRule, Lead } from './types';
 
 export const MAX_SYSTEM_RADIUS = 3750; // Radio base
-export const MICRO_PAYMENT_AMOUNT = 1.21; // Coste notificación Push Flash
-export const LEAD_UNLOCK_PRICE = 2.50; // Coste desbloqueo Lead (Gratis para Dominio)
-export const PUSH_NOTIFICATION_PRICE = 1.21; // Precio exacto solicitado
-export const AI_PACK_PRICE = 9.90; 
+// PRECIOS REDONDOS (IVA INCLUIDO)
+export const MICRO_PAYMENT_AMOUNT = 2.00; // Coste notificación Push Flash
+export const LEAD_UNLOCK_PRICE = 3.00; // Coste desbloqueo Lead
+export const PUSH_NOTIFICATION_PRICE = 2.00; // Precio exacto
+export const AI_PACK_PRICE = 10.00; 
 export const AI_PACK_AMOUNT = 10; 
-export const BANNER_1_DAY_PRICE = 9.90;
-export const BANNER_7_DAYS_PRICE = 39.90;
-export const BANNER_14_DAYS_PRICE = 69.90;
+export const BANNER_1_DAY_PRICE = 10.00;
+export const BANNER_7_DAYS_PRICE = 40.00;
+export const BANNER_14_DAYS_PRICE = 70.00;
 
-// --- SWEET CREDITS SYSTEM ---
+// --- SWEET CREDITS SYSTEM (Precios Redondos) ---
 export const CREDIT_PACKS = [
-    { id: 'pack_mini', credits: 10, price: 9.90, label: 'Pack Degustación', bonus: 0 },
-    { id: 'pack_medium', credits: 25, price: 19.90, label: 'Pack Goloso', bonus: 5 }, // 20 + 5 gratis
-    { id: 'pack_pro', credits: 60, price: 39.90, label: 'Pack Maestro', bonus: 10 }, // 50 + 10 gratis
+    { id: 'pack_mini', credits: 10, price: 10.00, label: 'Pack Degustación', bonus: 0 },
+    { id: 'pack_medium', credits: 25, price: 20.00, label: 'Pack Goloso', bonus: 5 }, // 20 + 5 gratis
+    { id: 'pack_pro', credits: 60, price: 40.00, label: 'Pack Maestro', bonus: 10 }, // 50 + 10 gratis
 ];
 
 export const ACTION_COSTS = {
@@ -227,8 +228,8 @@ export const MOCK_BUSINESSES: Business[] = [
 ];
 
 export const MOCK_INVOICES: Invoice[] = [
-  { id: 'INV-2024-001', business_id: '1', business_name: 'ELEMEDE SL', business_nif: 'B12345678', client_name: 'La Dulcería de Ana', client_nif: 'B12345678', date: '2024-01-15', due_date: '2024-01-15', base_amount: 100, iva_rate: 21, iva_amount: 21, irpf_rate: 0, irpf_amount: 0, total_amount: 121, status: 'paid', concept: 'Suscripción Pack FUEGO (Mensual)', quarter: 1 },
-  { id: 'INV-2024-002', business_id: '2', business_name: 'ELEMEDE SL', business_nif: 'B12345678', client_name: 'Churros & Co', client_nif: 'B87654321', date: '2024-02-20', due_date: '2024-02-20', base_amount: 29, iva_rate: 21, iva_amount: 6.09, irpf_rate: 0, irpf_amount: 0, total_amount: 35.09, status: 'paid', concept: 'Suscripción Pack BRONCE (Mensual)', quarter: 1 },
+  { id: 'INV-2024-001', business_id: '1', business_name: 'ELEMEDE SL', business_nif: 'B12345678', client_name: 'La Dulcería de Ana', client_nif: 'B12345678', date: '2024-01-15', due_date: '2024-01-15', base_amount: 49.58, iva_rate: 21, iva_amount: 10.42, irpf_rate: 0, irpf_amount: 0, total_amount: 60.00, status: 'paid', concept: 'Suscripción Pack DOMINIO (Mensual)', quarter: 1 },
+  { id: 'INV-2024-002', business_id: '2', business_name: 'ELEMEDE SL', business_nif: 'B12345678', client_name: 'Churros & Co', client_nif: 'B87654321', date: '2024-02-20', due_date: '2024-02-20', base_amount: 16.53, iva_rate: 21, iva_amount: 3.47, irpf_rate: 0, irpf_amount: 0, total_amount: 20.00, status: 'paid', concept: 'Suscripción Pack BRONCE (Mensual)', quarter: 1 },
 ];
 
 export const SUBSCRIPTION_PACKS: SubscriptionPack[] = [
@@ -277,6 +278,7 @@ export const SWEET_KEYWORDS = [
 ];
 
 export const LEGAL_TEXTS = {
+  // ... (Legal texts preserved to save space)
   PRIVACY_POLICY: `POLÍTICA DE PRIVACIDAD
 1. IDENTIFICACIÓN DEL RESPONSABLE DEL TRATAMIENTO
 Titular: ELEMEDE (Lemesedelce)
