@@ -9,6 +9,7 @@ import { AdminMarketingModule } from './AdminMarketingModule';
 import { AdminAccountingModule } from './AdminAccountingModule';
 import { AdminMaestroModule } from './AdminMaestroModule';
 import { getNotificationLogs, sendNotification } from '../services/notificationService';
+import { dataService } from '../services/supabase'; // Import Data Service for Auth
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -67,12 +68,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSwitchUserModalOpen, setIsSwitchUserModalOpen] = useState(false);
   const [switchData, setSwitchData] = useState({ email: '', password: '' });
   const [switchError, setSwitchError] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
 
   // CONTROL DE ACCESO (RBAC STRICT 4 ROLES)
   const isRoot = currentUser.role === 'admin_root';
   const isMarketing = currentUser.role === 'admin_marketing';
   const isFinanzas = currentUser.role === 'admin_finanzas';
   const isSoporte = currentUser.role === 'admin_soporte';
+  const isAdmin = currentUser.role.startsWith('admin_');
 
   // Update logs periodically
   useEffect(() => {
@@ -124,7 +127,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setShowNotification(null), 3000);
   };
 
-  // ... (Login setup, switch user handlers preserved) ...
   const handleSetupSecurity = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 10) return alert("Seguridad insuficiente. Use al menos 10 caracteres.");
@@ -156,25 +158,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSelfEditModalOpen(false);
   };
 
-  const handleSwitchMaster = (e: React.FormEvent) => {
+  const handleSwitchMaster = async (e: React.FormEvent) => {
     e.preventDefault();
     setSwitchError(false);
+    setIsSwitching(true);
 
-    // Strict role check for switching
-    const targetUser = users.find(u => 
-        u.email.toLowerCase() === switchData.email.toLowerCase() && 
-        u.password_hash === switchData.password &&
-        (u.role.startsWith('admin_'))
-    );
+    try {
+        // Authenticacion REAL contra el servicio
+        const targetUser = await dataService.authenticate(switchData.email, switchData.password);
 
-    if (targetUser && onSwitchSession) {
-        onSwitchSession(targetUser);
-        setIsSwitchUserModalOpen(false);
-        setSwitchData({ email: '', password: '' });
-        notify(`Sesión transferida a: ${targetUser.name} (${targetUser.role.toUpperCase()})`);
-    } else {
+        // Verificar si es admin
+        if (targetUser && targetUser.role.startsWith('admin_')) {
+            if (onSwitchSession) {
+                onSwitchSession(targetUser);
+                setIsSwitchUserModalOpen(false);
+                setSwitchData({ email: '', password: '' });
+                notify(`Sesión transferida a: ${targetUser.name} (${targetUser.role.toUpperCase()})`);
+            }
+        } else {
+            setSwitchError(true);
+            setTimeout(() => setSwitchError(false), 3000);
+        }
+    } catch (error) {
+        console.error("Switch error:", error);
         setSwitchError(true);
         setTimeout(() => setSwitchError(false), 3000);
+    } finally {
+        setIsSwitching(false);
     }
   };
 
@@ -205,7 +215,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-0 md:p-4 bg-gray-950/98 backdrop-blur-3xl animate-fade-in overflow-hidden font-brand">
       
-      {/* ... (First Login & Self Edit Modals preserved) ... */}
+      {/* SWITCH USER MODAL */}
+      {isSwitchUserModalOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl relative">
+                <button onClick={() => setIsSwitchUserModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900">✕</button>
+                <div className="flex items-center gap-3 mb-6">
+                    <span className="text-2xl">🔄</span>
+                    <h3 className="text-xl font-black text-gray-900 uppercase italic">Cambio de Operador</h3>
+                </div>
+                <form onSubmit={handleSwitchMaster} className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-gray-400">Credenciales del Destino</label>
+                        <input 
+                            type="email" 
+                            placeholder="Email Corporativo" 
+                            className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 transition-colors"
+                            value={switchData.email}
+                            onChange={e => setSwitchData({...switchData, email: e.target.value})}
+                            autoFocus
+                        />
+                        <input 
+                            type="password" 
+                            placeholder="Contraseña" 
+                            className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-indigo-500 transition-colors"
+                            value={switchData.password}
+                            onChange={e => setSwitchData({...switchData, password: e.target.value})}
+                        />
+                    </div>
+                    {switchError && (
+                        <div className="bg-red-50 text-red-600 text-[10px] font-bold p-3 rounded-xl text-center animate-shake border border-red-100">
+                            ⛔ Credenciales inválidas o sin privilegios de admin.
+                        </div>
+                    )}
+                    <div className="bg-indigo-50 p-3 rounded-xl text-[9px] text-indigo-800 font-medium">
+                        Esta acción cambiará tu sesión actual al nuevo usuario sin recargar la aplicación.
+                    </div>
+                    <button 
+                        disabled={isSwitching}
+                        className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg flex justify-center items-center gap-2"
+                    >
+                        {isSwitching ? 'Autenticando...' : 'Acceder y Cambiar'}
+                    </button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* SELF EDIT MODAL */}
+      {isSelfEditModalOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl relative">
+                <button onClick={() => setIsSelfEditModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900">✕</button>
+                <h3 className="text-xl font-black text-gray-900 uppercase italic mb-6">Mis Credenciales</h3>
+                <form onSubmit={handleSaveSelfCredentials} className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-gray-400">Email de Acceso</label>
+                        <input className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm" value={selfEditData.email} onChange={e => setSelfEditData({...selfEditData, email: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-gray-400">Nueva Contraseña</label>
+                        <input type="password" className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm" value={selfEditData.password} onChange={e => setSelfEditData({...selfEditData, password: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-gray-400">Confirmar Contraseña</label>
+                        <input type="password" className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl font-bold text-sm" value={selfEditData.confirmPassword} onChange={e => setSelfEditData({...selfEditData, confirmPassword: e.target.value})} />
+                    </div>
+                    <button className="w-full bg-gray-900 text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-green-600 transition-all shadow-lg mt-4">
+                        Actualizar Perfil
+                    </button>
+                </form>
+            </div>
+        </div>
+      )}
       
       {showNotification && (
         <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-8 py-3 rounded-full shadow-2xl z-[500] animate-bounce">
@@ -254,12 +336,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
              </div>
              
              <div className="grid grid-cols-2 gap-2">
-                {isRoot && (
+                {isAdmin && (
                     <button onClick={() => setIsSwitchUserModalOpen(true)} className="py-3 bg-gray-200 text-gray-600 rounded-xl font-black text-[9px] uppercase hover:bg-gray-300 transition-colors flex flex-col items-center justify-center gap-1">
                         <span className="text-sm">🔄</span> Switch
                     </button>
                 )}
-                <button onClick={onLogout} className={`py-3 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-colors flex flex-col items-center justify-center gap-1 ${!isRoot ? 'col-span-2' : ''}`}>
+                <button onClick={onLogout} className={`py-3 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-colors flex flex-col items-center justify-center gap-1 ${!isAdmin ? 'col-span-2' : ''}`}>
                     <span className="text-sm">🚪</span> Salir
                 </button>
              </div>
