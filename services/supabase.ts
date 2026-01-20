@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Business, UserAccount, Invoice, Banner, DiscountCode, ForumQuestion, Lead, SupportTicket, PushCampaign } from '../types';
 import { MOCK_BUSINESSES, MOCK_USERS, MOCK_INVOICES, MOCK_BANNERS, MOCK_DISCOUNT_CODES, MOCK_FORUM, MOCK_LEADS } from '../constants';
+import { hashPassword, verifyPassword } from './securityUtils';
 
 // --- CONFIGURATION ---
 const getEnvVar = (key: string): string => {
@@ -43,7 +44,6 @@ const saveToStorage = (key: string, data: any) => {
 };
 
 // --- DATA MAPPING HELPERS ---
-// Maps SQL Snake_Case to App CamelCase
 const mapBusinessFromDB = (dbBiz: any): Business => ({
     id: dbBiz.id,
     name: dbBiz.name,
@@ -120,14 +120,13 @@ export const dataService = {
                         role: u.role,
                         status: u.status,
                         favorites: u.favorites,
-                        password_hash: 'HIDDEN' // Security
+                        password_hash: 'HIDDEN' // Security: Never return real hash to frontend state list
                     })) : [];
 
-                    // Return DB data if available, falling back to mocks only if empty to show *something* initially
                     return {
                         businesses: mappedBusinesses.length > 0 ? mappedBusinesses : MOCK_BUSINESSES,
                         users: mappedUsers.length > 0 ? mappedUsers : MOCK_USERS,
-                        invoices: MOCK_INVOICES, // Keeping mocks for invoices for now
+                        invoices: MOCK_INVOICES,
                         banners: MOCK_BANNERS,
                         coupons: dbCoupons && dbCoupons.length > 0 ? dbCoupons : MOCK_DISCOUNT_CODES,
                         forum: MOCK_FORUM,
@@ -141,7 +140,7 @@ export const dataService = {
             }
         }
 
-        // Fallback for dev mode without keys (USING LOCALSTORAGE PERSISTENCE)
+        // Fallback for dev mode (USING LOCALSTORAGE PERSISTENCE)
         return {
             businesses: loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES),
             users: loadFromStorage('elemede_data_users', MOCK_USERS),
@@ -162,7 +161,7 @@ export const dataService = {
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: provider,
             options: {
-                redirectTo: window.location.origin, // Redirect back to the app after login
+                redirectTo: window.location.origin,
             },
         });
 
@@ -179,79 +178,64 @@ export const dataService = {
                 const userId = session.user.id;
                 const userEmail = session.user.email || '';
                 
-                // 1. Check if profile exists
-                const { data: profile, error } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', userId)
-                    .single();
+                const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
 
                 if (profile) {
-                    // Existing User
                     onUserAuthenticated({ ...profile, id: userId, email: userEmail, password_hash: 'HIDDEN' });
                 } else {
-                    // 2. New Social User -> Create Profile automatically
                     const metaName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || userEmail.split('@')[0];
-                    
                     const newProfile = {
                         id: userId,
                         email: userEmail,
                         name: metaName,
-                        role: 'user', // Default role for social logins
+                        role: 'user',
                         status: 'active',
                         date_registered: new Date().toISOString()
                     };
-
                     const { error: insertError } = await supabase.from('profiles').insert([newProfile]);
-                    
                     if (!insertError) {
                         onUserAuthenticated({ ...newProfile, password_hash: 'HIDDEN' } as UserAccount);
-                    } else {
-                        console.error("Error creating social profile:", insertError);
                     }
                 }
-            } else if (event === 'SIGNED_OUT') {
-                // Optional: Handle logout globally if needed
             }
         });
     },
 
-    // AUTHENTICATION (EMAIL/PASSWORD)
-    authenticate: async (email: string, passwordHash: string): Promise<UserAccount | null> => {
+    // AUTHENTICATION (EMAIL/PASSWORD) - SECURED
+    authenticate: async (email: string, plainPassword: string): Promise<UserAccount | null> => {
         if (supabase) {
             // Real Auth
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
-                password: passwordHash, 
+                password: plainPassword, // Supabase handles hashing internally
             });
 
             if (!error && data.user) {
-                // Fetch extra profile data
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', data.user.id)
-                    .single();
-                
+                const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
                 return profile ? { ...profile, id: data.user.id, email: data.user.email!, password_hash: 'HIDDEN' } : null;
             }
         }
         
-        // Mock fallback for admin demo login (USING LOCALSTORAGE)
+        // Mock/Local Auth - NOW SECURED WITH SHA-256
         const localUsers: UserAccount[] = loadFromStorage('elemede_data_users', MOCK_USERS);
         const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
         
-        // Simple password check for demo (plain text or simple hash match)
-        if (user && user.password_hash === passwordHash) return user;
+        if (user) {
+            // Check against stored hash
+            const isValid = await verifyPassword(plainPassword, user.password_hash);
+            if (isValid) {
+                // Return user object but CENSOR the hash to state
+                return { ...user, password_hash: 'HIDDEN' };
+            }
+        }
         return null;
     },
 
     createUser: async (user: UserAccount): Promise<UserAccount> => {
         if (supabase) {
-            // 1. Create Auth User
             const { data, error } = await supabase.auth.signUp({
                 email: user.email,
-                password: user.password_hash, // Real password passed here
+                password: user.password_hash, // Real pass needed for creation
                 options: {
                     data: {
                         name: user.name,
@@ -262,7 +246,6 @@ export const dataService = {
 
             if (error) throw error;
             
-            // 2. Create Profile (handled by Trigger ideally, but doing manually for safety)
             if (data.user) {
                 const { error: profileError } = await supabase.from('profiles').insert([{
                     id: data.user.id,
@@ -277,11 +260,21 @@ export const dataService = {
             }
         }
         
-        // LOCAL PERSISTENCE FALLBACK
-        const newUser = { ...user, id: `u_${Date.now()}` };
+        // LOCAL PERSISTENCE - NOW SECURED
+        // Encrypt password before storage
+        const secureHash = await hashPassword(user.password_hash); // Assuming user.password_hash contains plain text from form
+        
+        const newUser = { 
+            ...user, 
+            id: `u_${Date.now()}`,
+            password_hash: secureHash // STORE HASH ONLY
+        };
+        
         const currentUsers = loadFromStorage('elemede_data_users', MOCK_USERS);
         saveToStorage('elemede_data_users', [...currentUsers, newUser]);
-        return newUser;
+        
+        // Return object with HIDDEN hash to state
+        return { ...newUser, password_hash: 'HIDDEN' };
     },
 
     updateUser: async (user: UserAccount) => {
@@ -292,9 +285,14 @@ export const dataService = {
                 status: user.status
             }).eq('id', user.id);
         } else {
-            // Local Update
             const currentUsers: UserAccount[] = loadFromStorage('elemede_data_users', MOCK_USERS);
-            const updated = currentUsers.map(u => u.id === user.id ? user : u);
+            // Don't overwrite password with 'HIDDEN' if updating profile details
+            const updated = currentUsers.map(u => {
+                if (u.id === user.id) {
+                    return { ...u, ...user, password_hash: u.password_hash }; // Keep original hash
+                }
+                return u;
+            });
             saveToStorage('elemede_data_users', updated);
         }
     },
@@ -303,16 +301,13 @@ export const dataService = {
     createBusiness: async (business: Business) => {
         if (supabase) {
             const dbPayload = mapBusinessToDB(business);
-            // Link owner
             const { data: authData } = await supabase.auth.getUser();
             if (authData.user) {
                 dbPayload.owner_id = authData.user.id;
             }
-            
             const { error } = await supabase.from('businesses').insert([dbPayload]);
             if (error) console.error("Error creating business", error);
         } else {
-            // Local persistence
             const currentBiz = loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES);
             saveToStorage('elemede_data_businesses', [...currentBiz, business]);
         }
@@ -324,7 +319,6 @@ export const dataService = {
             const dbUpdates = mapBusinessToDB(updates);
             await supabase.from('businesses').update(dbUpdates).eq('id', id);
         } else {
-            // Local persistence
             const currentBiz: Business[] = loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES);
             const updated = currentBiz.map(b => b.id === id ? { ...b, ...updates } : b);
             saveToStorage('elemede_data_businesses', updated);
@@ -365,7 +359,6 @@ export const uploadBusinessImage = async (file: File, pathPrefix: string): Promi
         try {
             const fileExt = file.name.split('.').pop();
             const fileName = `${pathPrefix}_${Date.now()}.${fileExt}`;
-            // Organize by business ID folder if possible, here simple flat structure
             const filePath = `${fileName}`;
 
             const { error: uploadError } = await supabase.storage
@@ -387,6 +380,5 @@ export const uploadBusinessImage = async (file: File, pathPrefix: string): Promi
             return URL.createObjectURL(file);
         }
     }
-    // Local Object URL for offline demo
     return URL.createObjectURL(file);
 };

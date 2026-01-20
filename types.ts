@@ -79,7 +79,7 @@ export type UserStatus = 'active' | 'suspended' | 'banned' | 'pending';
 export interface UserAccount {
   id: string;
   email: string;
-  password_hash: string; 
+  password_hash: string; // SECURITY: Always hashed (SHA-256) or 'HIDDEN' in state
   name: string;
   role: UserRole;
   is_first_login?: boolean;

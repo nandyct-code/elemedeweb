@@ -189,14 +189,18 @@ export const INITIAL_SYSTEM_FINANCIALS: Record<CountryCode, SystemFinancialConfi
   },
 };
 
+// --- SECURITY NOTE: PASSWORDS ARE NOW HASHED (SHA-256) ---
+// Default password for all mocks: 'admin123' -> 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
+// User 'Ana': '123456' -> 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
+
 export const MOCK_USERS: UserAccount[] = [
-  { id: '1', email: 'admin@elemede.com', password_hash: 'admin123', name: 'Super Admin', role: 'admin_root', status: 'active', date_registered: '2023-01-01' },
-  { id: '2', email: 'biz1@sweet.com', password_hash: '123456', name: 'Juan Pastelero', role: 'business_owner', linkedBusinessId: '1', status: 'active', date_registered: '2023-02-15' },
-  { id: '3', email: 'user@gmail.com', password_hash: '123456', name: 'Ana Golosa', role: 'user', favorites: ['1', '3'], status: 'active', date_registered: '2023-03-10' },
+  { id: '1', email: 'admin@elemede.com', password_hash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', name: 'Super Admin', role: 'admin_root', status: 'active', date_registered: '2023-01-01' },
+  { id: '2', email: 'biz1@sweet.com', password_hash: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', name: 'Juan Pastelero', role: 'business_owner', linkedBusinessId: '1', status: 'active', date_registered: '2023-02-15' },
+  { id: '3', email: 'user@gmail.com', password_hash: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', name: 'Ana Golosa', role: 'user', favorites: ['1', '3'], status: 'active', date_registered: '2023-03-10' },
   // SPECIFIC ADMIN ROLES FOR DEMO
-  { id: 'adm_mk', email: 'marketing@elemede.com', password_hash: 'mark123', name: 'Director Marketing', role: 'admin_marketing', status: 'active' },
-  { id: 'adm_fin', email: 'finanzas@elemede.com', password_hash: 'fin123', name: 'CFO Finanzas', role: 'admin_finanzas', status: 'active' },
-  { id: 'adm_sup', email: 'soporte@elemede.com', password_hash: 'sup123', name: 'Jefe Soporte', role: 'admin_soporte', status: 'active' }
+  { id: 'adm_mk', email: 'marketing@elemede.com', password_hash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', name: 'Director Marketing', role: 'admin_marketing', status: 'active' },
+  { id: 'adm_fin', email: 'finanzas@elemede.com', password_hash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', name: 'CFO Finanzas', role: 'admin_finanzas', status: 'active' },
+  { id: 'adm_sup', email: 'soporte@elemede.com', password_hash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', name: 'Jefe Soporte', role: 'admin_soporte', status: 'active' }
 ];
 
 export const MOCK_BUSINESSES: Business[] = [
