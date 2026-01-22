@@ -14,10 +14,10 @@ const getEnvVar = (key: string): string => {
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
 
-const isSupabaseConfigured = supabaseUrl && supabaseAnonKey;
+const isSupabaseConfigured = supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http');
 
 if (!isSupabaseConfigured) {
-    console.warn("⚠️ Supabase keys missing. Running in OFFLINE/DEMO mode with LocalStorage persistence.");
+    console.warn("⚠️ Supabase keys missing or invalid. Running in OFFLINE/DEMO mode with LocalStorage persistence.");
 }
 
 export const supabase = isSupabaseConfigured 
@@ -123,9 +123,17 @@ export const dataService = {
                         password_hash: 'HIDDEN' // Security: Never return real hash to frontend state list
                     })) : [];
 
+                    // MERGE DB USERS WITH MOCK ADMINS (Critical for Admin Access)
+                    const mergedUsers = [...MOCK_USERS];
+                    mappedUsers.forEach(u => {
+                        if (!mergedUsers.find(m => m.id === u.id || m.email === u.email)) {
+                            mergedUsers.push(u);
+                        }
+                    });
+
                     return {
                         businesses: mappedBusinesses.length > 0 ? mappedBusinesses : MOCK_BUSINESSES,
-                        users: mappedUsers.length > 0 ? mappedUsers : MOCK_USERS,
+                        users: mergedUsers,
                         invoices: MOCK_INVOICES,
                         banners: MOCK_BANNERS,
                         coupons: dbCoupons && dbCoupons.length > 0 ? dbCoupons : MOCK_DISCOUNT_CODES,
@@ -141,9 +149,25 @@ export const dataService = {
         }
 
         // Fallback for dev mode (USING LOCALSTORAGE PERSISTENCE)
+        const storedUsers = loadFromStorage('elemede_data_users', []);
+        
+        // CRITICAL FIX: Merge stored users with Hardcoded Admins
+        // Admins in MOCK_USERS must take precedence to ensure credentials work
+        const mergedUsers = [...MOCK_USERS];
+        
+        if (Array.isArray(storedUsers)) {
+            storedUsers.forEach((u: UserAccount) => {
+                // Only add if not already in MOCK_USERS (by ID or Email)
+                const exists = mergedUsers.find(m => m.id === u.id || m.email.toLowerCase() === u.email.toLowerCase());
+                if (!exists) {
+                    mergedUsers.push(u);
+                }
+            });
+        }
+
         return {
             businesses: loadFromStorage('elemede_data_businesses', MOCK_BUSINESSES),
-            users: loadFromStorage('elemede_data_users', MOCK_USERS),
+            users: mergedUsers,
             invoices: loadFromStorage('elemede_data_invoices', MOCK_INVOICES),
             banners: loadFromStorage('elemede_data_banners', MOCK_BANNERS),
             coupons: loadFromStorage('elemede_data_coupons', MOCK_DISCOUNT_CODES),
@@ -156,7 +180,10 @@ export const dataService = {
 
     // SOCIAL LOGIN (OAUTH)
     signInWithProvider: async (provider: 'google' | 'facebook' | 'apple') => {
-        if (!supabase) throw new Error("Servicio de autenticación no disponible.");
+        if (!supabase) {
+            console.error("Login Provider Error: Supabase client is null.");
+            throw new Error("El servicio de autenticación social no está configurado en este entorno.");
+        }
         
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: provider,
@@ -203,11 +230,20 @@ export const dataService = {
 
     // AUTHENTICATION (EMAIL/PASSWORD) - SECURED
     authenticate: async (email: string, plainPassword: string): Promise<UserAccount | null> => {
+        // 1. First, check Internal Admins (MOCK_USERS source of truth)
+        // This ensures admins can always login even if DB/Storage is stale or offline
+        const internalAdmin = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
+        
+        if (internalAdmin && internalAdmin.role.startsWith('admin_')) {
+            const isValid = await verifyPassword(plainPassword, internalAdmin.password_hash);
+            if (isValid) return { ...internalAdmin, password_hash: 'HIDDEN' };
+        }
+
+        // 2. Try Real Supabase Auth
         if (supabase) {
-            // Real Auth
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
-                password: plainPassword, // Supabase handles hashing internally
+                password: plainPassword,
             });
 
             if (!error && data.user) {
@@ -216,18 +252,17 @@ export const dataService = {
             }
         }
         
-        // Mock/Local Auth - NOW SECURED WITH SHA-256
-        const localUsers: UserAccount[] = loadFromStorage('elemede_data_users', MOCK_USERS);
+        // 3. Fallback to Local Storage Users (if not admin found in step 1)
+        const localUsers: UserAccount[] = loadFromStorage('elemede_data_users', []);
         const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
         
         if (user) {
-            // Check against stored hash
             const isValid = await verifyPassword(plainPassword, user.password_hash);
             if (isValid) {
-                // Return user object but CENSOR the hash to state
                 return { ...user, password_hash: 'HIDDEN' };
             }
         }
+        
         return null;
     },
 
@@ -235,7 +270,7 @@ export const dataService = {
         if (supabase) {
             const { data, error } = await supabase.auth.signUp({
                 email: user.email,
-                password: user.password_hash, // Real pass needed for creation
+                password: user.password_hash, 
                 options: {
                     data: {
                         name: user.name,
@@ -261,19 +296,22 @@ export const dataService = {
         }
         
         // LOCAL PERSISTENCE - NOW SECURED
-        // Encrypt password before storage
-        const secureHash = await hashPassword(user.password_hash); // Assuming user.password_hash contains plain text from form
+        const secureHash = await hashPassword(user.password_hash); 
         
         const newUser = { 
             ...user, 
             id: `u_${Date.now()}`,
-            password_hash: secureHash // STORE HASH ONLY
+            password_hash: secureHash 
         };
         
-        const currentUsers = loadFromStorage('elemede_data_users', MOCK_USERS);
-        saveToStorage('elemede_data_users', [...currentUsers, newUser]);
+        const currentUsers = loadFromStorage('elemede_data_users', []);
+        // Merge with MOCK_USERS to ensure we don't lose them when saving back
+        const mergedToSave = [...MOCK_USERS, ...currentUsers, newUser];
+        // De-duplicate
+        const uniqueUsers = Array.from(new Map(mergedToSave.map(item => [item.email, item])).values());
         
-        // Return object with HIDDEN hash to state
+        saveToStorage('elemede_data_users', uniqueUsers);
+        
         return { ...newUser, password_hash: 'HIDDEN' };
     },
 
@@ -285,11 +323,10 @@ export const dataService = {
                 status: user.status
             }).eq('id', user.id);
         } else {
-            const currentUsers: UserAccount[] = loadFromStorage('elemede_data_users', MOCK_USERS);
-            // Don't overwrite password with 'HIDDEN' if updating profile details
+            const currentUsers: UserAccount[] = loadFromStorage('elemede_data_users', []);
             const updated = currentUsers.map(u => {
                 if (u.id === user.id) {
-                    return { ...u, ...user, password_hash: u.password_hash }; // Keep original hash
+                    return { ...u, ...user, password_hash: u.password_hash }; 
                 }
                 return u;
             });

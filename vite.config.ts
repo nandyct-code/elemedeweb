@@ -44,9 +44,8 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
-    },
+    // SECURITY UPDATE: API_KEY removed from define. 
+    // It is now handled securely via Supabase Edge Functions.
     build: {
       outDir: 'dist',
       sourcemap: true
