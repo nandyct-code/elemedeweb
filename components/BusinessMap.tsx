@@ -60,25 +60,32 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     return Math.round(R * c);
   };
 
+  // Helper to validate coordinates to prevent Leaflet crashes
+  const isValidLatLng = (lat: number | undefined, lng: number | undefined) => {
+    return typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
+  };
+
   // 1. INITIALIZE MAP (ONCE)
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
 
+    // Default to Madrid if center is invalid at init
+    const initialLat = isValidLatLng(center.lat, center.lng) ? center.lat : 40.4168;
+    const initialLng = isValidLatLng(center.lat, center.lng) ? center.lng : -3.7038;
+
     // LIMITES NACIONALES (España Peninsular + Islas)
-    // Sur-Oeste: 27.0, -19.0 (Canarias)
-    // Nor-Este: 44.5, 5.0 (Pirineos/Menorca)
     const SPAIN_BOUNDS: L.LatLngBoundsExpression = [
         [27.0, -19.0], 
         [44.5, 5.0]
     ];
 
     leafletMap.current = L.map(mapRef.current, {
-        minZoom: 5, // Zoom mínimo para ver el país entero, no más lejos (Internacional bloqueado)
+        minZoom: 5,
         maxZoom: 18,
-        maxBounds: SPAIN_BOUNDS, // Restringe la navegación a la zona nacional
-        maxBoundsViscosity: 1.0, // Rebote duro al intentar salir
-        zoomControl: false // Ocultamos el default para limpieza visual (opcional)
-    }).setView([40.4168, -3.7038], 6); // Vista inicial centrada en España (Zoom 6 = Comunidades)
+        maxBounds: SPAIN_BOUNDS,
+        maxBoundsViscosity: 1.0,
+        zoomControl: false
+    }).setView([initialLat, initialLng], 6);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
@@ -86,7 +93,6 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
     markersLayer.current = L.layerGroup().addTo(leafletMap.current);
 
-    // Add Zoom Control manually at bottom right for better UX on mobile
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
 
     return () => {
@@ -97,18 +103,16 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     };
   }, []);
 
-  // 2. UPDATE VIEW ONLY WHEN CENTER CHANGES EXPLICITLY (USER CHANGE)
+  // 2. UPDATE VIEW ONLY WHEN CENTER CHANGES EXPLICITLY
   useEffect(() => {
-      if (leafletMap.current) {
-          // Si el usuario busca algo específico o se geolocaliza, hacemos zoom in (Nivel Ciudad)
-          // Si es la carga inicial genérica, mantenemos un zoom más abierto (Nivel Región/País)
+      if (leafletMap.current && isValidLatLng(center.lat, center.lng)) {
           const zoomLevel = radius < 10000 ? 14 : 10; 
           leafletMap.current.flyTo([center.lat, center.lng], zoomLevel, {
               animate: true,
               duration: 1.5
           });
       }
-  }, [center.lat, center.lng]);
+  }, [center.lat, center.lng, radius]);
 
   // 3. UPDATE MARKERS (DATA CHANGES)
   useEffect(() => {
@@ -116,8 +120,8 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
     markersLayer.current.clearLayers();
 
-    // Dibujar radio de búsqueda (Visual Reference Only)
-    if (radius < 50000) { // Solo dibujar círculo si es una búsqueda local, no nacional
+    // Dibujar radio de búsqueda
+    if (radius < 50000 && isValidLatLng(center.lat, center.lng)) {
         L.circle([center.lat, center.lng], {
         color: '#ff4d00',
         fillColor: '#ff4d00',
@@ -128,16 +132,20 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
     // Marcador de usuario
     const userMarkerPos = userLocation || center;
-    L.marker([userMarkerPos.lat, userMarkerPos.lng], {
-      icon: L.divIcon({
-        className: 'user-location-marker',
-        html: `<div class="w-5 h-5 bg-orange-600 rounded-full border-2 border-white shadow-xl flex items-center justify-center animate-pulse"><div class="w-2 h-2 bg-white rounded-full"></div></div>`,
-        iconSize: [20, 20]
-      })
-    }).addTo(markersLayer.current).bindPopup("<b>Estás aquí</b>");
+    if (isValidLatLng(userMarkerPos.lat, userMarkerPos.lng)) {
+        L.marker([userMarkerPos.lat, userMarkerPos.lng], {
+          icon: L.divIcon({
+            className: 'user-location-marker',
+            html: `<div class="w-5 h-5 bg-orange-600 rounded-full border-2 border-white shadow-xl flex items-center justify-center animate-pulse"><div class="w-2 h-2 bg-white rounded-full"></div></div>`,
+            iconSize: [20, 20]
+          })
+        }).addTo(markersLayer.current).bindPopup("<b>Estás aquí</b>");
+    }
 
     // Añadir marcadores de negocios
     businesses.forEach(biz => {
+      if (!isValidLatLng(biz.lat, biz.lng)) return;
+
       // 1. MAIN HQ MARKER
       const mainDist = calculateDistance(center.lat, center.lng, biz.lat, biz.lng);
       
@@ -174,7 +182,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
                   <h4 class="font-black text-sm text-gray-900 leading-tight truncate">${biz.name}</h4>
                   <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mt-0.5 truncate">${biz.address}</p>
                   <span class="inline-block mt-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded-md uppercase tracking-wider border border-orange-100">
-                    ${mainDist}m
+                    ${isValidLatLng(center.lat, center.lng) ? mainDist + 'm' : ''}
                   </span>
                 </div>
             </div>
@@ -192,10 +200,9 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
       // 2. ADDITIONAL SEDES MARKERS & CONNECTIONS
       if(biz.direccionesAdicionales && biz.direccionesAdicionales.length > 0) {
           biz.direccionesAdicionales.forEach((sede, idx) => {
-              if (sede.lat && sede.lng) {
-                  const sedeDist = calculateDistance(center.lat, center.lng, sede.lat, sede.lng);
+              if (isValidLatLng(sede.lat, sede.lng)) {
+                  const sedeDist = calculateDistance(center.lat, center.lng, sede.lat!, sede.lng!);
                   
-                  // Use sector icon for branches too, slightly smaller
                   const sedeIcon = L.divIcon({
                       className: `custom-marker ${getMarkerClass(biz.packId)}`, 
                       html: `<span>${getIcon(biz.sectorId)}</span>`,
@@ -203,7 +210,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
                       iconAnchor: [15, 15]
                   });
 
-                  L.marker([sede.lat, sede.lng], { icon: sedeIcon })
+                  L.marker([sede.lat!, sede.lng!], { icon: sedeIcon })
                     .addTo(markersLayer.current!)
                     .bindPopup(`
                       <div class="min-w-[200px] font-brand p-1">
@@ -211,7 +218,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
                             <span class="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded uppercase tracking-widest">
                                 Sede Adicional #${idx + 1}
                             </span>
-                            <span class="text-[9px] font-bold text-gray-400">${sedeDist}m</span>
+                            <span class="text-[9px] font-bold text-gray-400">${isValidLatLng(center.lat, center.lng) ? sedeDist + 'm' : ''}</span>
                         </div>
                         <h4 class="font-black text-sm text-gray-900 leading-tight mb-1 truncate">${biz.name}</h4>
                         <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mb-3 truncate">📍 ${sede.calle}</p>
@@ -225,10 +232,9 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
                       </div>
                     `);
                   
-                  // Draw dashed line connecting HQ to Sede if reasonable distance
-                  if (mainDist < 50000) { // Only connect if not super far to avoid clutter
-                      L.polyline([[biz.lat, biz.lng], [sede.lat, sede.lng]], {
-                          color: '#9ca3af', // gray-400
+                  if (mainDist < 50000 && isValidLatLng(biz.lat, biz.lng)) {
+                      L.polyline([[biz.lat, biz.lng], [sede.lat!, sede.lng!]], {
+                          color: '#9ca3af',
                           weight: 2,
                           dashArray: '5, 10',
                           opacity: 0.6,
@@ -239,7 +245,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
           });
       }
     });
-  }, [businesses, radius, onViewBusiness, userLocation]); // removed 'center' dependency from marker updates to prevent flicker, but radius update needs redraw
+  }, [businesses, radius, onViewBusiness, userLocation, center]);
 
   return (
     <div className="relative h-[600px] w-full shadow-2xl overflow-hidden rounded-[3rem] border-8 border-white group">

@@ -38,10 +38,11 @@ import { NotificationCenter } from './components/NotificationCenter';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { SweetBattle } from './components/SweetBattle';
 import { StoryViewer } from './components/StoryViewer';
-import { SweetFinder } from './components/SweetFinder'; // IMPORTED
+import { SweetFinder } from './components/SweetFinder'; 
 
 // Modals
 import { AuthModal } from './components/AuthModal';
+import { AdminAuthModal } from './components/AdminAuthModal'; // Import Admin Modal
 import { SubscriptionModal } from './components/SubscriptionModal';
 import { BusinessProfileModal } from './components/BusinessProfileModal';
 import { ProfileModal } from './components/ProfileModal';
@@ -93,13 +94,14 @@ export const App = () => {
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false); // Explicit Admin Modal State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [viewedBusiness, setViewedBusiness] = useState<Business | null>(null);
-  const [activeStoryBusiness, setActiveStoryBusiness] = useState<Business | null>(null); // NEW: Story Viewer State
+  const [activeStoryBusiness, setActiveStoryBusiness] = useState<Business | null>(null); 
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
-  // NEW: State to track which business is being requested in the event modal
+  
   const [eventTargetBusinessId, setEventTargetBusinessId] = useState<string | null>(null);
 
   // Footer/Info Modals State
@@ -125,7 +127,7 @@ export const App = () => {
             // Listen for Supabase Auth Changes (e.g. returning from Google/Facebook login)
             dataService.initializeAuthListener((authenticatedUser) => {
                 setCurrentUser(authenticatedUser);
-                setIsAuthModalOpen(false); // Close modal if open
+                setIsAuthModalOpen(false); 
                 // Update users list locally if new
                 setUsers(prev => {
                     if (prev.find(u => u.id === authenticatedUser.id)) return prev;
@@ -137,7 +139,12 @@ export const App = () => {
             const storedUserId = localStorage.getItem('elemede_session_user');
             if (storedUserId) {
                 const returningUser = data.users.find((u: { id: string; }) => u.id === storedUserId);
-                if (returningUser) setCurrentUser(returningUser);
+                if (returningUser) {
+                    setCurrentUser(returningUser);
+                    if (returningUser.role.startsWith('admin_')) {
+                        // Optionally open dashboard automatically for admins
+                    }
+                }
             }
 
         } catch (error) {
@@ -150,18 +157,14 @@ export const App = () => {
     initApp();
   }, []);
 
-  // --- PWA INSTALLATION EVENT ---
+  // ... (Existing effects for PWA, Geo, Sector) ...
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
   const handleInstallApp = async () => {
@@ -172,7 +175,6 @@ export const App = () => {
     setInstallPrompt(null);
   };
 
-  // --- HELPERS ---
   const detectLocation = async (lat: number, lng: number) => {
     const province = await getUserProvince(lat, lng);
     setUserProvince(province);
@@ -189,7 +191,6 @@ export const App = () => {
         },
         () => {
             console.warn("Geo blocked or denied. Defaulting to Madrid.");
-            // Maintain default Madrid state
         },
         { enableHighAccuracy: true }
       );
@@ -207,10 +208,9 @@ export const App = () => {
     return Math.round(R * c);
   };
 
-  // --- COMPUTED VALUES ---
   const filteredSectorBusinesses = useMemo(() => {
-    const refLat = userLocation?.lat || 40.4168; // Default Madrid
-    const refLng = userLocation?.lng || -3.7038; // Default Madrid
+    const refLat = userLocation?.lat || 40.4168; 
+    const refLng = userLocation?.lng || -3.7038; 
 
     let pool = businesses.filter(b => b.status === 'active');
 
@@ -218,16 +218,13 @@ export const App = () => {
         pool = pool.filter(b => b.sectorId === activeSector);
     }
 
-    // UPDATED PROXIMITY LOGIC: Check HQ OR Sedes against visibility radius
     pool = pool.filter(b => {
         const pack = subscriptionPacks.find(p => p.id === b.packId);
         if (!pack) return false;
         
-        // 1. Check HQ Distance
         const distHQ = calculateDistance(refLat, refLng, b.lat, b.lng);
         if (distHQ <= pack.visibilityRadius) return true;
 
-        // 2. Check Sedes Distance
         if (b.direccionesAdicionales && b.direccionesAdicionales.length > 0) {
             return b.direccionesAdicionales.some(sede => {
                 if (sede.lat && sede.lng) {
@@ -256,9 +253,7 @@ export const App = () => {
 
   }, [businesses, activeSector, userLocation, selectedTags, subscriptionPacks]);
 
-  // --- GEOLOCATION INITIALIZATION ---
   useEffect(() => {
-    // "Preguntar siempre": Check permissions on load
     if ("geolocation" in navigator && "permissions" in navigator) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName })
         .then((result) => {
@@ -267,14 +262,9 @@ export const App = () => {
           } else if (result.state === 'prompt') {
             setShowGeoPrompt(true);
           }
-          // If denied, we stay in Madrid (default state)
         })
-        .catch(() => {
-           // Fallback for browsers not supporting permissions API well, just show prompt
-           setShowGeoPrompt(true); 
-        });
+        .catch(() => setShowGeoPrompt(true));
     } else {
-        // Fallback for older browsers
         requestLocation(); 
     }
   }, [requestLocation]);
@@ -317,31 +307,16 @@ export const App = () => {
     }, 100);
   };
 
-  // --- PHASE 3: SECURE AUTH HANDLER ---
   const handleLogin = async (user: UserAccount) => {
-    // In Phase 3, we treat login as a server request
-    const authUser = await dataService.authenticate(user.email, user.password_hash);
-    
-    if (authUser) {
-        setUsers(prev => prev.map(u => u.id === authUser.id ? authUser : u)); // Update last login in state
-        setCurrentUser(authUser);
-        localStorage.setItem('elemede_session_user', authUser.id);
+    // Phase 3: Auth via service is handled in Modal, this just sets state
+    // But for admin modal success, we might receive the user object directly
+    if (user) {
+        setUsers(prev => prev.map(u => u.id === user.id ? user : u)); 
+        setCurrentUser(user);
+        localStorage.setItem('elemede_session_user', user.id);
         
-        if (authUser.role.startsWith('admin_') || authUser.role.includes('master')) {
+        if (user.role.startsWith('admin_') || user.role.includes('master')) {
             setIsAdminDashboardOpen(true);
-        }
-    } else {
-        // Fallback for new registrations not yet in DB during session
-        const existing = users.find(u => u.email === user.email);
-        if (existing) {
-            setCurrentUser(existing);
-            localStorage.setItem('elemede_session_user', existing.id);
-        } else {
-            // New user registration flow
-            const created = await dataService.createUser(user);
-            setUsers(prev => [...prev, created]);
-            setCurrentUser(created);
-            localStorage.setItem('elemede_session_user', created.id);
         }
     }
   };
@@ -400,7 +375,6 @@ export const App = () => {
         is_first_login: true
     };
 
-    // PHASE 1: Persist to Data Layer
     await dataService.createBusiness(newBusiness);
     await dataService.createUser(newUser);
 
@@ -429,7 +403,6 @@ export const App = () => {
   };
 
   const handleAddRating = (bizId: string, rating: Rating) => {
-      // In real implementation, this calls DataService
       setBusinesses(prev => prev.map(b => {
           if (b.id === bizId) {
               const updated = { ...b, ratings: [...(b.ratings || []), rating] };
@@ -440,23 +413,18 @@ export const App = () => {
       }));
   };
 
-  // --- AUTOMATION 5: LEAD MATCHING & PUSH NOTIFICATIONS ---
   const handleNewLead = (lead: Lead) => {
       setLeads(prev => [lead, ...prev]);
-      // (Data service persist normally here)
-      
-      // Check if this lead was targeted to a specific business
       if (lead.targetBusinessId) {
           const targetBiz = businesses.find(b => b.id === lead.targetBusinessId);
           if (targetBiz) {
-              // Direct notification for targeted lead
               const newCampaign: PushCampaign = {
                   id: `push_direct_${Date.now()}_${targetBiz.id}`,
                   businessId: targetBiz.id,
                   businessName: "Sistema ELEMEDE",
                   message: `¡Nueva solicitud directa! ${lead.clientName} te ha pedido presupuesto para ${lead.eventType.toUpperCase()}.`,
                   sentAt: new Date().toISOString(),
-                  expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), // 48h priority
+                  expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   reach: 1, 
                   cost: 0 
               };
@@ -465,40 +433,28 @@ export const App = () => {
               return;
           }
       }
-
-      // 1. Intelligent Matching Logic (For general leads)
       const matchingBusinesses = businesses.filter(biz => {
-          // A. Province Match (Fuzzy)
           const locationMatch = lead.location.toLowerCase().includes(biz.city.toLowerCase()) || 
                                 lead.location.toLowerCase().includes(biz.province.toLowerCase());
-          
           if (!locationMatch) return false;
-
-          // B. Sector/Tag Match
           const sectorMatch = (
               (lead.eventType === 'boda' && ['mesas_dulces', 'reposteria_creativa'].includes(biz.sectorId)) ||
               (lead.eventType === 'comunion' && ['mesas_dulces', 'tiendas_chucherias'].includes(biz.sectorId)) ||
               (lead.eventType === 'corporativo' && ['pasteleria', 'mesas_dulces'].includes(biz.sectorId))
           );
-
           const tagsMatch = biz.tags?.some(tag => lead.description.toLowerCase().includes(tag.toLowerCase()));
-
           return sectorMatch || tagsMatch;
       });
-
-      // 2. Generate Automated Campaigns
       const newCampaigns: PushCampaign[] = matchingBusinesses.map(biz => ({
           id: `push_auto_${Date.now()}_${biz.id}`,
           businessId: biz.id,
           businessName: "Sistema ELEMEDE",
           message: `¡Oportunidad! Nuevo lead compatible: ${lead.eventType.toUpperCase()} en ${lead.location}. Presupuesto: ${lead.budget}. ¡Sé el primero en contactar!`,
           sentAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
           reach: 1, 
           cost: 0 
       }));
-
-      // 3. Dispatch Notifications
       if (newCampaigns.length > 0) {
           setPushCampaigns(prev => [...newCampaigns, ...prev]);
           if (currentUser?.role.includes('admin') || currentUser?.role === 'business_owner') {
@@ -506,7 +462,6 @@ export const App = () => {
               setTimeout(() => setIsNotifCenterOpen(false), 6000);
           }
       }
-
       alert(`¡Solicitud enviada! Hemos notificado automáticamente a ${matchingBusinesses.length} profesionales compatibles en la zona.`);
   };
 
@@ -536,18 +491,16 @@ export const App = () => {
   };
 
   const handleMaintenanceUnlock = () => {
-      setIsAuthModalOpen(true); 
+      // Direct to admin modal on maintenance unlock
+      setIsAdminAuthModalOpen(true);
   };
 
   const openInfoModal = (title: string, content: string) => {
       setInfoModalState({ open: true, title, content });
   };
 
-  // HANDLER FOR OPENING EVENT MODAL FROM BUSINESS PROFILE
   const handleOpenEventModalForBusiness = (targetBizId: string) => {
       setEventTargetBusinessId(targetBizId);
-      // If user not logged in, show auth or just let them open modal?
-      // Modal handles login state inside
       setIsEventModalOpen(true);
   };
 
@@ -567,25 +520,34 @@ export const App = () => {
   return (
     <div className="min-h-screen bg-white font-brand text-gray-900 relative selection:bg-pink-200 selection:text-pink-900">
       
-      {/* Background Icons Pattern */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-[0.03] select-none">
           <div className="absolute top-[5%] left-[5%] text-9xl transform -rotate-12">🧁</div>
           <div className="absolute top-[60%] right-[20%] text-9xl transform rotate-12">🥨</div>
       </div>
 
-      {/* --- COOKIE CONSENT BANNER (GDPR) --- */}
       <CookieConsentBanner />
 
       {/* GLOBAL MODALS */}
-      {showGeoPrompt && <GeoLocationModal onEnable={handleGeoEnable} onSkip={() => { setShowGeoPrompt(false); /* Default to Madrid */ }} />}
+      {showGeoPrompt && <GeoLocationModal onEnable={handleGeoEnable} onSkip={() => { setShowGeoPrompt(false); }} />}
+      
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onOpenSubscription={() => { setIsAuthModalOpen(false); setIsSubscriptionModalOpen(true); }} />
+      
+      {/* Explicit Admin Auth Modal */}
+      <AdminAuthModal 
+        isOpen={isAdminAuthModalOpen} 
+        onClose={() => setIsAdminAuthModalOpen(false)} 
+        onSuccess={(adminUser) => { 
+            handleLogin(adminUser); 
+            setIsAdminAuthModalOpen(false); 
+        }} 
+      />
       
       <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} onSuccess={handleSubscriptionSuccess} onInvoiceGenerated={(inv) => { setInvoices(prev => [inv, ...prev]); dataService.createInvoice(inv); }} existingBusinesses={businesses} existingUsers={users} currentCountry={COUNTRIES_DB.find(c => c.code === currentCountryCode)!} countryFinancials={systemFinancials[currentCountryCode]} subscriptionPacks={subscriptionPacks} />
       
       {isAdminDashboardOpen && currentUser && <AdminDashboard isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)} currentUser={currentUser} businesses={businesses} onUpdateBusiness={handleUpdateBusiness} users={users} onUpdateUser={handleUpdateUser} onUpdateUserStatus={(id, status) => setUsers(prev => prev.map(u => u.id === id ? { ...u, status } : u))} onDeleteUser={(id) => setUsers(prev => prev.filter(u => u.id !== id))} onDeleteBusiness={(id) => setBusinesses(prev => prev.filter(b => b.id !== id))} invoices={invoices} setInvoices={setInvoices} banners={banners} onUpdateBanners={setBanners} maintenanceMode={maintenanceMode} setMaintenanceMode={setMaintenanceMode} onLogout={handleLogout} onSwitchSession={setCurrentUser} tickets={tickets} onUpdateTicket={(id, updates) => setTickets(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))} bannedWords={bannedWords} setBannedWords={setBannedWords} coupons={coupons} setCoupons={setCoupons} forumQuestions={forumQuestions} onDeleteForumQuestion={handleDeleteQuestion} socialLinks={socialLinks} setSocialLinks={setSocialLinks} systemFinancials={systemFinancials} setSystemFinancials={setSystemFinancials} subscriptionPacks={subscriptionPacks} setSubscriptionPacks={setSubscriptionPacks} />}
+      
       {currentUser && isProfileModalOpen && <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={currentUser} businesses={businesses} onUpdateUser={handleUpdateUser} onUpdateBusiness={handleUpdateBusiness} onLogout={handleLogout} invoices={invoices} onGenerateInvoice={(inv) => { setInvoices(prev => [inv, ...prev]); dataService.createInvoice(inv); }} coupons={coupons} tickets={tickets} onCreateTicket={(t) => setTickets(prev => [...prev, t])} systemConfig={systemFinancials[currentCountryCode]} leads={leads} onSendPush={handleNewPushCampaign} />}
       
-      {/* UPDATED: Business Profile Modal with Targeting Handler */}
       {viewedBusiness && (
           <BusinessProfileModal 
               isOpen={!!viewedBusiness} 
@@ -595,8 +557,8 @@ export const App = () => {
               onAddRating={handleAddRating} 
               onLoginRequest={() => { setViewedBusiness(null); setIsAuthModalOpen(true); }}
               onRequestQuote={() => {
-                  setEventTargetBusinessId(viewedBusiness.id); // Set target
-                  setViewedBusiness(null); // Optionally close profile or keep it open? Closing for cleaner modal stack
+                  setEventTargetBusinessId(viewedBusiness.id); 
+                  setViewedBusiness(null); 
                   setIsEventModalOpen(true);
               }}
           />
@@ -607,7 +569,6 @@ export const App = () => {
       <InfoModal isOpen={infoModalState.open} onClose={() => setInfoModalState({ ...infoModalState, open: false })} title={infoModalState.title} content={infoModalState.content} />
       <ContactModal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} />
       
-      {/* UPDATED: Event Modal with target Business prop */}
       <EventRequestModal 
           isOpen={isEventModalOpen} 
           onClose={() => { setIsEventModalOpen(false); setEventTargetBusinessId(null); }} 
@@ -617,7 +578,6 @@ export const App = () => {
           targetBusiness={eventTargetBusinessId ? businesses.find(b => b.id === eventTargetBusinessId) : undefined}
       />
       
-      {/* STORY VIEWER OVERLAY */}
       {activeStoryBusiness && (
           <StoryViewer 
               business={activeStoryBusiness} 
@@ -628,14 +588,12 @@ export const App = () => {
 
       {isMaintenanceRestricted && <MaintenanceScreen onUnlockAttempt={handleMaintenanceUnlock} />}
       
-      {/* Social Sidebar with PWA Install Logic */}
       <SocialSidebar 
         showInstall={!!installPrompt} 
         onInstall={handleInstallApp} 
         socialLinks={socialLinks} 
       />
       
-      {/* BANNER MANAGER POP-UPS & HEADER INJECTIONS */}
       <BannerManager 
         banners={banners} 
         businesses={businesses} 
@@ -653,7 +611,6 @@ export const App = () => {
         businesses={businesses}
       />
 
-      {/* --- FLOATING EVENT BUTTON --- */}
       <button 
           onClick={() => { setEventTargetBusinessId(null); setIsEventModalOpen(true); }}
           className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[60] bg-gray-900 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform group flex items-center gap-0 hover:gap-3 overflow-hidden border-4 border-white"
@@ -664,7 +621,6 @@ export const App = () => {
           </span>
       </button>
 
-      {/* --- HEADER --- */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-orange-50 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveSector(null)}>
@@ -673,7 +629,6 @@ export const App = () => {
             </div>
 
             <div className="flex items-center gap-4">
-                {/* NOTIFICATION BELL */}
                 <button 
                     onClick={() => setIsNotifCenterOpen(!isNotifCenterOpen)}
                     className="relative p-2 text-gray-500 hover:text-orange-600 transition-colors"
@@ -705,7 +660,6 @@ export const App = () => {
         </div>
       </header>
 
-      {/* --- STORY RAIL (INSTAGRAM STYLE) --- */}
       <StoryRail 
           businesses={businesses} 
           onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} 
@@ -713,16 +667,13 @@ export const App = () => {
           sectorFilter={activeSector}
       />
 
-      {/* --- MAIN CONTENT --- */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-16">
         
-        {/* 1. PRESENTATION (HERO) OR AI FINDER */}
         {!activeSector && (
             <>
                 <section className="text-center space-y-6 py-10 md:py-20 relative bg-gradient-to-b from-orange-100/50 via-pink-100/30 to-white/0 rounded-[4rem] mx-2 sm:mx-8 shadow-sm border border-orange-50/50 overflow-hidden">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-orange-200/30 to-pink-200/30 rounded-full blur-3xl -z-10 animate-pulse-slow"></div>
                     
-                    {/* Floating Sector Icons */}
                     <div className="absolute top-10 left-10 text-6xl opacity-20 animate-bounce delay-100 hidden md:block">🧁</div>
                     <div className="absolute bottom-10 right-10 text-6xl opacity-20 animate-bounce delay-300 hidden md:block">🍰</div>
 
@@ -733,7 +684,6 @@ export const App = () => {
                         Un mundo dulce a un solo click.
                     </p>
 
-                    {/* NEW: AI SWEET FINDER */}
                     <div className="max-w-4xl mx-auto relative z-20 px-4">
                         <SweetFinder 
                             businesses={businesses} 
@@ -742,7 +692,6 @@ export const App = () => {
                         />
                     </div>
 
-                    {/* HOME BANNERS - Header Position */}
                     <div className="max-w-4xl mx-auto mt-8 px-4">
                         <BannerManager 
                             banners={banners} 
@@ -758,7 +707,6 @@ export const App = () => {
             </>
         )}
 
-        {/* 2. SECTOR NAVIGATION */}
         <section>
             {!activeSector && <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-8 text-center">Explora por Categoría</h3>}
             <div className={`grid gap-4 transition-all duration-500 ${activeSector ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6'}`}>
@@ -780,12 +728,10 @@ export const App = () => {
             </div>
         </section>
 
-        {/* ACTIVE SECTOR CONTENT */}
         {activeSector && (
             <div className="space-y-16 animate-fade-in">
                 {sectorDetails && <SectorDetailView sector={SECTORS.find(s => s.id === activeSector)!} details={sectorDetails} imageUrl={sectorImageUrl} isLoading={isSectorLoading} />}
 
-                {/* TAGS FILTER */}
                 <div className="py-6 border-y border-orange-50">
                     <div className="flex justify-between items-center mb-4">
                         <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Refinar Búsqueda</h4>
@@ -819,7 +765,6 @@ export const App = () => {
                 </div>
 
                 <NewSubscribersBanner businesses={businesses.filter(b => b.sectorId === activeSector)} sectorLabel={SECTORS.find(s => s.id === activeSector)?.label || ''} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} />
-                {/* UPDATED: Pass bannedWords to Forum */}
                 <SectorForum 
                     sector={SECTORS.find(s => s.id === activeSector)!} 
                     currentUser={currentUser} 
@@ -834,12 +779,10 @@ export const App = () => {
             </div>
         )}
 
-        {/* HOME CONTENT */}
         {!activeSector && (
             <div className="space-y-20">
                 <TopBusinesses businesses={filteredSectorBusinesses} isNational={false} userProvince={userProvince} onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)} currentUser={currentUser} onToggleFavorite={(id) => { if (!currentUser) return setIsAuthModalOpen(true); const newFavs = currentUser.favorites?.includes(id) ? currentUser.favorites.filter(f => f !== id) : [...(currentUser.favorites || []), id]; handleUpdateUser({ ...currentUser, favorites: newFavs }); }} />
                 
-                {/* NEW: SWEET BATTLE COMPONENT */}
                 <SweetBattle businesses={businesses} onVote={handleBattleVote} />
 
                 <AboutUs />
@@ -872,6 +815,10 @@ export const App = () => {
             </div>
             <div className="pt-8 border-t border-white/10">
                 <p className="text-[10px] text-gray-600">© 2025 ELEMEDE (Lemesedelce). Todos los derechos reservados. Madrid, España.</p>
+                {/* SECRET ADMIN TRIGGER */}
+                <button onClick={() => setIsAdminAuthModalOpen(true)} className="mt-4 text-[8px] text-gray-800 font-mono hover:text-gray-600 uppercase tracking-widest">
+                    Staff Login
+                </button>
             </div>
         </div>
       </footer>
