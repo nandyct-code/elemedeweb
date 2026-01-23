@@ -186,8 +186,10 @@ export const App = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          setUserLocation({ lat: latitude, lng: longitude });
-          detectLocation(latitude, longitude);
+          if (!isNaN(latitude) && !isNaN(longitude)) {
+            setUserLocation({ lat: latitude, lng: longitude });
+            detectLocation(latitude, longitude);
+          }
         },
         () => {
             console.warn("Geo blocked or denied. Defaulting to Madrid.");
@@ -198,6 +200,7 @@ export const App = () => {
   }, []);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return 0;
     const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;
@@ -222,12 +225,14 @@ export const App = () => {
         const pack = subscriptionPacks.find(p => p.id === b.packId);
         if (!pack) return false;
         
+        if (isNaN(b.lat) || isNaN(b.lng)) return false;
+
         const distHQ = calculateDistance(refLat, refLng, b.lat, b.lng);
         if (distHQ <= pack.visibilityRadius) return true;
 
         if (b.direccionesAdicionales && b.direccionesAdicionales.length > 0) {
             return b.direccionesAdicionales.some(sede => {
-                if (sede.lat && sede.lng) {
+                if (sede.lat && sede.lng && !isNaN(sede.lat) && !isNaN(sede.lng)) {
                     const distSede = calculateDistance(refLat, refLng, sede.lat, sede.lng);
                     return distSede <= pack.visibilityRadius;
                 }
@@ -329,8 +334,8 @@ export const App = () => {
   };
 
   const handleSubscriptionSuccess = async (data: SubscriptionFormData, generatedId: string) => {
-    const mainLat = userLocation?.lat || 40.4168; 
-    const mainLng = userLocation?.lng || -3.7038;
+    const mainLat = (userLocation?.lat && !isNaN(userLocation.lat)) ? userLocation.lat : 40.4168; 
+    const mainLng = (userLocation?.lng && !isNaN(userLocation.lng)) ? userLocation.lng : -3.7038;
 
     const enrichedSedes = data.sedes.map(sede => ({
         ...sede,
@@ -683,8 +688,6 @@ export const App = () => {
                     <p className="text-lg md:text-xl text-gray-600 font-medium max-w-2xl mx-auto relative z-10 mb-8">
                         Un mundo dulce a un solo click.
                     </p>
-
-                    {/* SWEET FINDER REMOVED FROM HERE AS REQUESTED */}
 
                     <div className="max-w-4xl mx-auto mt-8 px-4 w-full">
                         <BannerManager 

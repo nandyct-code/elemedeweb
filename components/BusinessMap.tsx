@@ -51,7 +51,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     // Validar entradas antes de cálculo matemático
-    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return 0;
+    if (!isFinite(lat1) || !isFinite(lon1) || !isFinite(lat2) || !isFinite(lon2)) return 0;
     
     const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
@@ -75,8 +75,8 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     if (!mapRef.current || leafletMap.current) return;
 
     // Default to Madrid if center is invalid at init
-    const initialLat = isValidLatLng(center?.lat, center?.lng) ? center.lat : 40.4168;
-    const initialLng = isValidLatLng(center?.lat, center?.lng) ? center.lng : -3.7038;
+    const safeCenterLat = isValidLatLng(center?.lat, center?.lng) ? center.lat : 40.4168;
+    const safeCenterLng = isValidLatLng(center?.lat, center?.lng) ? center.lng : -3.7038;
 
     // LIMITES NACIONALES (España Peninsular + Islas)
     const SPAIN_BOUNDS: L.LatLngBoundsExpression = [
@@ -84,21 +84,25 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
         [44.5, 5.0]
     ];
 
-    leafletMap.current = L.map(mapRef.current, {
-        minZoom: 5,
-        maxZoom: 18,
-        maxBounds: SPAIN_BOUNDS,
-        maxBoundsViscosity: 1.0,
-        zoomControl: false
-    }).setView([initialLat, initialLng], 6);
+    try {
+        leafletMap.current = L.map(mapRef.current, {
+            minZoom: 5,
+            maxZoom: 18,
+            maxBounds: SPAIN_BOUNDS,
+            maxBoundsViscosity: 1.0,
+            zoomControl: false
+        }).setView([safeCenterLat, safeCenterLng], 6);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(leafletMap.current);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(leafletMap.current);
 
-    markersLayer.current = L.layerGroup().addTo(leafletMap.current);
+        markersLayer.current = L.layerGroup().addTo(leafletMap.current);
 
-    L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
+        L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
+    } catch (e) {
+        console.error("Map init failed", e);
+    }
 
     return () => {
       if (leafletMap.current) {
@@ -112,10 +116,14 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
   useEffect(() => {
       if (leafletMap.current && isValidLatLng(center?.lat, center?.lng)) {
           const zoomLevel = radius < 10000 ? 14 : 10; 
-          leafletMap.current.flyTo([center.lat, center.lng], zoomLevel, {
-              animate: true,
-              duration: 1.5
-          });
+          try {
+              leafletMap.current.flyTo([center.lat, center.lng], zoomLevel, {
+                  animate: true,
+                  duration: 1.5
+              });
+          } catch(e) {
+              console.warn("flyTo failed (invalid coords ignored)");
+          }
       }
   }, [center?.lat, center?.lng, radius]);
 
@@ -130,127 +138,135 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
     // Dibujar radio de búsqueda
     if (radius < 50000 && validCenter) {
-        L.circle([center.lat, center.lng], {
-        color: '#ff4d00',
-        fillColor: '#ff4d00',
-        fillOpacity: 0.05,
-        radius: radius
-        }).addTo(markersLayer.current);
+        try {
+            L.circle([center.lat, center.lng], {
+            color: '#ff4d00',
+            fillColor: '#ff4d00',
+            fillOpacity: 0.05,
+            radius: radius
+            }).addTo(markersLayer.current);
+        } catch (e) {/* Ignore invalid circle */}
     }
 
     // Marcador de usuario
     const userMarkerPos = userLocation || center;
     if (isValidLatLng(userMarkerPos?.lat, userMarkerPos?.lng)) {
-        L.marker([userMarkerPos.lat, userMarkerPos.lng], {
-          icon: L.divIcon({
-            className: 'user-location-marker',
-            html: `<div class="w-5 h-5 bg-orange-600 rounded-full border-2 border-white shadow-xl flex items-center justify-center animate-pulse"><div class="w-2 h-2 bg-white rounded-full"></div></div>`,
-            iconSize: [20, 20]
-          })
-        }).addTo(markersLayer.current).bindPopup("<b>Estás aquí</b>");
+        try {
+            L.marker([userMarkerPos.lat, userMarkerPos.lng], {
+              icon: L.divIcon({
+                className: 'user-location-marker',
+                html: `<div class="w-5 h-5 bg-orange-600 rounded-full border-2 border-white shadow-xl flex items-center justify-center animate-pulse"><div class="w-2 h-2 bg-white rounded-full"></div></div>`,
+                iconSize: [20, 20]
+              })
+            }).addTo(markersLayer.current).bindPopup("<b>Estás aquí</b>");
+        } catch (e) { /* Ignore invalid marker */ }
     }
 
     // Añadir marcadores de negocios
     businesses.forEach(biz => {
       if (!isValidLatLng(biz.lat, biz.lng)) return;
 
-      // 1. MAIN HQ MARKER
-      const mainDist = validCenter ? calculateDistance(center.lat, center.lng, biz.lat, biz.lng) : 0;
-      
-      const isFire = biz.packId === 'super_top';
-      const markerSize = isFire ? [50, 50] : [40, 40];
-      const imageSrc = biz.mainImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(biz.name)}&background=random`;
-      
-      const icon = L.divIcon({
-        className: `custom-marker ${getMarkerClass(biz.packId)}`,
-        html: `<span>${getIcon(biz.sectorId)}</span>`,
-        iconSize: markerSize as L.PointExpression,
-        iconAnchor: [markerSize[0]/2, markerSize[1]/2] as L.PointExpression
-      });
-
-      L.marker([biz.lat, biz.lng], { icon })
-        .addTo(markersLayer.current!)
-        .bindPopup(`
-          <div class="min-w-[220px] font-brand">
-            <div class="flex items-start gap-3 mb-3">
-                <div class="relative shrink-0">
-                  <div class="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-gray-100">
-                    <img 
-                      src="${imageSrc}" 
-                      class="w-full h-full object-cover"
-                      alt="${biz.name}"
-                      onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(biz.name)}'"
-                    />
-                  </div>
-                  <div class="absolute -bottom-2 -right-2 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-50 text-base cursor-help" title="Plan: ${biz.packId}">
-                    ${isFire ? '🔥' : (biz.packId === 'premium' ? '👑' : '✨')}
-                  </div>
-                </div>
-                <div class="min-w-0 flex-1 pt-1">
-                  <h4 class="font-black text-sm text-gray-900 leading-tight truncate">${biz.name}</h4>
-                  <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mt-0.5 truncate">${biz.address}</p>
-                  <span class="inline-block mt-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded-md uppercase tracking-wider border border-orange-100">
-                    ${validCenter ? mainDist + 'm' : ''}
-                  </span>
-                </div>
-            </div>
-            
-            <button
-                onclick="window.handleViewBusiness('${biz.id}')"
-                class="w-full bg-gray-900 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 group"
-            >
-                <span>Entrar al Perfil</span>
-                <span class="group-hover:translate-x-1 transition-transform">→</span>
-            </button>
-          </div>
-        `);
-
-      // 2. ADDITIONAL SEDES MARKERS & CONNECTIONS
-      if(biz.direccionesAdicionales && biz.direccionesAdicionales.length > 0) {
-          biz.direccionesAdicionales.forEach((sede, idx) => {
-              if (isValidLatLng(sede.lat, sede.lng)) {
-                  const sedeDist = validCenter ? calculateDistance(center.lat, center.lng, sede.lat!, sede.lng!) : 0;
-                  
-                  const sedeIcon = L.divIcon({
-                      className: `custom-marker ${getMarkerClass(biz.packId)}`, 
-                      html: `<span>${getIcon(biz.sectorId)}</span>`,
-                      iconSize: [30, 30],
-                      iconAnchor: [15, 15]
-                  });
-
-                  L.marker([sede.lat!, sede.lng!], { icon: sedeIcon })
-                    .addTo(markersLayer.current!)
-                    .bindPopup(`
-                      <div class="min-w-[200px] font-brand p-1">
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded uppercase tracking-widest">
-                                Sede Adicional #${idx + 1}
-                            </span>
-                            <span class="text-[9px] font-bold text-gray-400">${validCenter ? sedeDist + 'm' : ''}</span>
-                        </div>
-                        <h4 class="font-black text-sm text-gray-900 leading-tight mb-1 truncate">${biz.name}</h4>
-                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mb-3 truncate">📍 ${sede.calle}</p>
-                        
-                        <button
-                            onclick="window.handleViewBusiness('${biz.id}')"
-                            class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
-                        >
-                            <span>Ver Negocio Principal</span>
-                        </button>
-                      </div>
-                    `);
-                  
-                  if (mainDist < 50000 && isValidLatLng(biz.lat, biz.lng)) {
-                      L.polyline([[biz.lat, biz.lng], [sede.lat!, sede.lng!]], {
-                          color: '#9ca3af',
-                          weight: 2,
-                          dashArray: '5, 10',
-                          opacity: 0.6,
-                          lineCap: 'round'
-                      }).addTo(markersLayer.current!);
-                  }
-              }
+      try {
+          // 1. MAIN HQ MARKER
+          const mainDist = validCenter ? calculateDistance(center.lat, center.lng, biz.lat, biz.lng) : 0;
+          
+          const isFire = biz.packId === 'super_top';
+          const markerSize = isFire ? [50, 50] : [40, 40];
+          const imageSrc = biz.mainImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(biz.name)}&background=random`;
+          
+          const icon = L.divIcon({
+            className: `custom-marker ${getMarkerClass(biz.packId)}`,
+            html: `<span>${getIcon(biz.sectorId)}</span>`,
+            iconSize: markerSize as L.PointExpression,
+            iconAnchor: [markerSize[0]/2, markerSize[1]/2] as L.PointExpression
           });
+
+          L.marker([biz.lat, biz.lng], { icon })
+            .addTo(markersLayer.current!)
+            .bindPopup(`
+              <div class="min-w-[220px] font-brand">
+                <div class="flex items-start gap-3 mb-3">
+                    <div class="relative shrink-0">
+                      <div class="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-gray-100">
+                        <img 
+                          src="${imageSrc}" 
+                          class="w-full h-full object-cover"
+                          alt="${biz.name}"
+                          onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(biz.name)}'"
+                        />
+                      </div>
+                      <div class="absolute -bottom-2 -right-2 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-50 text-base cursor-help" title="Plan: ${biz.packId}">
+                        ${isFire ? '🔥' : (biz.packId === 'premium' ? '👑' : '✨')}
+                      </div>
+                    </div>
+                    <div class="min-w-0 flex-1 pt-1">
+                      <h4 class="font-black text-sm text-gray-900 leading-tight truncate">${biz.name}</h4>
+                      <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mt-0.5 truncate">${biz.address}</p>
+                      <span class="inline-block mt-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded-md uppercase tracking-wider border border-orange-100">
+                        ${validCenter ? mainDist + 'm' : ''}
+                      </span>
+                    </div>
+                </div>
+                
+                <button
+                    onclick="window.handleViewBusiness('${biz.id}')"
+                    class="w-full bg-gray-900 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 group"
+                >
+                    <span>Entrar al Perfil</span>
+                    <span class="group-hover:translate-x-1 transition-transform">→</span>
+                </button>
+              </div>
+            `);
+
+          // 2. ADDITIONAL SEDES MARKERS & CONNECTIONS
+          if(biz.direccionesAdicionales && biz.direccionesAdicionales.length > 0) {
+              biz.direccionesAdicionales.forEach((sede, idx) => {
+                  if (isValidLatLng(sede.lat, sede.lng)) {
+                      const sedeDist = validCenter ? calculateDistance(center.lat, center.lng, sede.lat!, sede.lng!) : 0;
+                      
+                      const sedeIcon = L.divIcon({
+                          className: `custom-marker ${getMarkerClass(biz.packId)}`, 
+                          html: `<span>${getIcon(biz.sectorId)}</span>`,
+                          iconSize: [30, 30],
+                          iconAnchor: [15, 15]
+                      });
+
+                      L.marker([sede.lat!, sede.lng!], { icon: sedeIcon })
+                        .addTo(markersLayer.current!)
+                        .bindPopup(`
+                          <div class="min-w-[200px] font-brand p-1">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded uppercase tracking-widest">
+                                    Sede Adicional #${idx + 1}
+                                </span>
+                                <span class="text-[9px] font-bold text-gray-400">${validCenter ? sedeDist + 'm' : ''}</span>
+                            </div>
+                            <h4 class="font-black text-sm text-gray-900 leading-tight mb-1 truncate">${biz.name}</h4>
+                            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mb-3 truncate">📍 ${sede.calle}</p>
+                            
+                            <button
+                                onclick="window.handleViewBusiness('${biz.id}')"
+                                class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                <span>Ver Negocio Principal</span>
+                            </button>
+                          </div>
+                        `);
+                      
+                      if (mainDist < 50000 && isValidLatLng(biz.lat, biz.lng)) {
+                          L.polyline([[biz.lat, biz.lng], [sede.lat!, sede.lng!]], {
+                              color: '#9ca3af',
+                              weight: 2,
+                              dashArray: '5, 10',
+                              opacity: 0.6,
+                              lineCap: 'round'
+                          }).addTo(markersLayer.current!);
+                      }
+                  }
+              });
+          }
+      } catch (e) {
+          // Ignore individual marker errors
       }
     });
   }, [businesses, radius, onViewBusiness, userLocation, center]);

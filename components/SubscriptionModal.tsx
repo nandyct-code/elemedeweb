@@ -61,6 +61,9 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const [readDocs, setReadDocs] = useState({ privacy: false, terms: false, contract: false });
   const legalContentRef = useRef<HTMLDivElement>(null);
 
+  // Typed keys for iteration to prevent TS7053
+  const consentKeys: ('privacy' | 'terms' | 'contract')[] = ['privacy', 'terms', 'contract'];
+
   useEffect(() => {
     if (isOpen) {
         setStep(1);
@@ -355,11 +358,11 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
               <div className="bg-white p-6 rounded-2xl border-2 border-orange-100 space-y-3">
                   <h4 className="text-xs font-black uppercase">Legal</h4>
-                  {['privacy', 'terms', 'contract'].map(type => (
-                      <label key={type} className={`flex items-start gap-3 cursor-pointer ${!readDocs[type as any] ? 'opacity-50' : ''}`}>
-                          <input type="checkbox" className="mt-1" checked={formData.consents[type as any]} onChange={() => toggleConsent(type as any)} disabled={!readDocs[type as any]} />
+                  {consentKeys.map(type => (
+                      <label key={type} className={`flex items-start gap-3 cursor-pointer ${!readDocs[type] ? 'opacity-50' : ''}`}>
+                          <input type="checkbox" className="mt-1" checked={formData.consents[type]} onChange={() => toggleConsent(type)} disabled={!readDocs[type]} />
                           <span className="text-xs">
-                              He leído y acepto <button onClick={(e) => openLegalDoc(e, type.toUpperCase(), (LEGAL_TEXTS as any)[type === 'contract' ? 'SUBSCRIPTION_CONTRACT' : type === 'privacy' ? 'PRIVACY_POLICY' : 'TERMS_OF_USE'], type as any)} className="text-orange-600 underline">{type.toUpperCase()}</button>
+                              He leído y acepto <button onClick={(e) => openLegalDoc(e, type.toUpperCase(), (LEGAL_TEXTS as any)[type === 'contract' ? 'SUBSCRIPTION_CONTRACT' : type === 'privacy' ? 'PRIVACY_POLICY' : 'TERMS_OF_USE'], type)} className="text-orange-600 underline">{type.toUpperCase()}</button>
                           </span>
                       </label>
                   ))}
