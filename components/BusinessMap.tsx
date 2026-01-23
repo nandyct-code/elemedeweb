@@ -50,6 +50,9 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
   };
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    // Validar entradas antes de cálculo matemático
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return 0;
+    
     const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;
@@ -61,8 +64,10 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
   };
 
   // Helper to validate coordinates to prevent Leaflet crashes
-  const isValidLatLng = (lat: number | undefined, lng: number | undefined) => {
-    return typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
+  const isValidLatLng = (lat: any, lng: any): boolean => {
+    const validLat = typeof lat === 'number' && !isNaN(lat) && isFinite(lat);
+    const validLng = typeof lng === 'number' && !isNaN(lng) && isFinite(lng);
+    return validLat && validLng;
   };
 
   // 1. INITIALIZE MAP (ONCE)
@@ -70,8 +75,8 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
     if (!mapRef.current || leafletMap.current) return;
 
     // Default to Madrid if center is invalid at init
-    const initialLat = isValidLatLng(center.lat, center.lng) ? center.lat : 40.4168;
-    const initialLng = isValidLatLng(center.lat, center.lng) ? center.lng : -3.7038;
+    const initialLat = isValidLatLng(center?.lat, center?.lng) ? center.lat : 40.4168;
+    const initialLng = isValidLatLng(center?.lat, center?.lng) ? center.lng : -3.7038;
 
     // LIMITES NACIONALES (España Peninsular + Islas)
     const SPAIN_BOUNDS: L.LatLngBoundsExpression = [
@@ -105,14 +110,14 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
   // 2. UPDATE VIEW ONLY WHEN CENTER CHANGES EXPLICITLY
   useEffect(() => {
-      if (leafletMap.current && isValidLatLng(center.lat, center.lng)) {
+      if (leafletMap.current && isValidLatLng(center?.lat, center?.lng)) {
           const zoomLevel = radius < 10000 ? 14 : 10; 
           leafletMap.current.flyTo([center.lat, center.lng], zoomLevel, {
               animate: true,
               duration: 1.5
           });
       }
-  }, [center.lat, center.lng, radius]);
+  }, [center?.lat, center?.lng, radius]);
 
   // 3. UPDATE MARKERS (DATA CHANGES)
   useEffect(() => {
@@ -120,8 +125,11 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
     markersLayer.current.clearLayers();
 
+    // Validar center para dibujo de círculo
+    const validCenter = isValidLatLng(center?.lat, center?.lng);
+
     // Dibujar radio de búsqueda
-    if (radius < 50000 && isValidLatLng(center.lat, center.lng)) {
+    if (radius < 50000 && validCenter) {
         L.circle([center.lat, center.lng], {
         color: '#ff4d00',
         fillColor: '#ff4d00',
@@ -132,7 +140,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
 
     // Marcador de usuario
     const userMarkerPos = userLocation || center;
-    if (isValidLatLng(userMarkerPos.lat, userMarkerPos.lng)) {
+    if (isValidLatLng(userMarkerPos?.lat, userMarkerPos?.lng)) {
         L.marker([userMarkerPos.lat, userMarkerPos.lng], {
           icon: L.divIcon({
             className: 'user-location-marker',
@@ -147,7 +155,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
       if (!isValidLatLng(biz.lat, biz.lng)) return;
 
       // 1. MAIN HQ MARKER
-      const mainDist = calculateDistance(center.lat, center.lng, biz.lat, biz.lng);
+      const mainDist = validCenter ? calculateDistance(center.lat, center.lng, biz.lat, biz.lng) : 0;
       
       const isFire = biz.packId === 'super_top';
       const markerSize = isFire ? [50, 50] : [40, 40];
@@ -182,7 +190,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
                   <h4 class="font-black text-sm text-gray-900 leading-tight truncate">${biz.name}</h4>
                   <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mt-0.5 truncate">${biz.address}</p>
                   <span class="inline-block mt-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded-md uppercase tracking-wider border border-orange-100">
-                    ${isValidLatLng(center.lat, center.lng) ? mainDist + 'm' : ''}
+                    ${validCenter ? mainDist + 'm' : ''}
                   </span>
                 </div>
             </div>
@@ -201,7 +209,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
       if(biz.direccionesAdicionales && biz.direccionesAdicionales.length > 0) {
           biz.direccionesAdicionales.forEach((sede, idx) => {
               if (isValidLatLng(sede.lat, sede.lng)) {
-                  const sedeDist = calculateDistance(center.lat, center.lng, sede.lat!, sede.lng!);
+                  const sedeDist = validCenter ? calculateDistance(center.lat, center.lng, sede.lat!, sede.lng!) : 0;
                   
                   const sedeIcon = L.divIcon({
                       className: `custom-marker ${getMarkerClass(biz.packId)}`, 
@@ -218,7 +226,7 @@ export const BusinessMap: React.FC<BusinessMapProps> = ({ businesses, center, ra
                             <span class="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded uppercase tracking-widest">
                                 Sede Adicional #${idx + 1}
                             </span>
-                            <span class="text-[9px] font-bold text-gray-400">${isValidLatLng(center.lat, center.lng) ? sedeDist + 'm' : ''}</span>
+                            <span class="text-[9px] font-bold text-gray-400">${validCenter ? sedeDist + 'm' : ''}</span>
                         </div>
                         <h4 class="font-black text-sm text-gray-900 leading-tight mb-1 truncate">${biz.name}</h4>
                         <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mb-3 truncate">📍 ${sede.calle}</p>

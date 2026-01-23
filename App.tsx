@@ -38,7 +38,7 @@ import { NotificationCenter } from './components/NotificationCenter';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { SweetBattle } from './components/SweetBattle';
 import { StoryViewer } from './components/StoryViewer';
-import { SweetFinder } from './components/SweetFinder'; 
+// SweetFinder removed from imports
 
 // Modals
 import { AuthModal } from './components/AuthModal';
@@ -684,15 +684,9 @@ export const App = () => {
                         Un mundo dulce a un solo click.
                     </p>
 
-                    <div className="max-w-4xl mx-auto relative z-20 px-4">
-                        <SweetFinder 
-                            businesses={businesses} 
-                            onViewBusiness={(id) => setViewedBusiness(businesses.find(b => b.id === id) || null)}
-                            userLocation={userLocation || undefined}
-                        />
-                    </div>
+                    {/* SWEET FINDER REMOVED FROM HERE AS REQUESTED */}
 
-                    <div className="max-w-4xl mx-auto mt-8 px-4">
+                    <div className="max-w-4xl mx-auto mt-8 px-4 w-full">
                         <BannerManager 
                             banners={banners} 
                             businesses={businesses} 
