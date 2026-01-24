@@ -109,7 +109,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               province: business.province,
               cp: business.cp,
               description: business.description || '',
-              direccionesAdicionales: business.direccionesAdicionales || []
+              direccionesAdicionales: business.direccionesAdicionales || [],
+              tags: business.tags || []
           });
           if (business.openingHours) {
               setOpeningHours(business.openingHours);
@@ -130,6 +131,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const limits = currentPack?.limits || { images: 1, tags: 3, videos: 0 };
   const currentImagesCount = (business?.images?.length || 0);
   const credits = business?.credits || 0;
+
+  // --- TAG LOGIC ---
+  const sectorTags = useMemo(() => {
+      if (!business) return [];
+      const sectorInfo = SECTORS.find(s => s.id === business.sectorId);
+      return sectorInfo?.tags || [];
+  }, [business]);
 
   // --- ACTIONS ---
 
@@ -417,6 +425,50 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                            <div className="md:col-span-2">
                                <label className="text-[9px] font-black text-gray-400 uppercase">Descripción</label>
                                <textarea className="w-full bg-white border border-gray-200 p-3 rounded-xl font-medium text-sm mt-1 h-24" value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} />
+                           </div>
+
+                           {/* TAGS SELECTOR (NEW FEATURE) */}
+                           <div className="md:col-span-2 space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase">
+                                        Etiquetas de Especialidad
+                                    </label>
+                                    <span className={`text-[9px] font-black uppercase ${(editFormData.tags?.length || 0) >= limits.tags ? 'text-red-500' : 'text-green-500'}`}>
+                                        {editFormData.tags?.length || 0} / {limits.tags} Usadas
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-2 p-4 bg-white border border-gray-200 rounded-xl">
+                                    {sectorTags.map(tag => {
+                                        const isSelected = editFormData.tags?.includes(tag);
+                                        return (
+                                            <button 
+                                                key={tag}
+                                                onClick={() => {
+                                                    const current = editFormData.tags || [];
+                                                    if (isSelected) {
+                                                        setEditFormData(prev => ({ ...prev, tags: current.filter(t => t !== tag) }));
+                                                    } else {
+                                                        if (current.length >= limits.tags) {
+                                                            return alert(`Tu plan ${currentPack?.label} permite máximo ${limits.tags} etiquetas.`);
+                                                        }
+                                                        setEditFormData(prev => ({ ...prev, tags: [...current, tag] }));
+                                                    }
+                                                }}
+                                                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
+                                                    isSelected 
+                                                    ? 'bg-orange-500 text-white border-orange-500 shadow-md' 
+                                                    : 'bg-gray-50 text-gray-500 border-gray-100 hover:border-orange-200 hover:text-orange-600'
+                                                }`}
+                                            >
+                                                {isSelected ? '✓ ' : ''}{tag}
+                                            </button>
+                                        );
+                                    })}
+                                    {sectorTags.length === 0 && <p className="text-xs text-gray-400 italic">No hay etiquetas disponibles para este sector.</p>}
+                                </div>
+                                <p className="text-[9px] text-gray-400 italic">
+                                    Selecciona las etiquetas que mejor describan tus productos para mejorar tu posicionamiento en búsquedas.
+                                </p>
                            </div>
                        </div>
                        <div className="mt-6 text-right">
