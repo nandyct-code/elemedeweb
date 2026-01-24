@@ -28,28 +28,24 @@ export const ACTION_COSTS = {
 
 export const SECTORS: SectorInfo[] = [
   { 
-    id: 'mesas_dulces', 
-    label: 'Mesas Dulces', 
-    description: 'Diseño exclusivo de candy bars y repostería para eventos.', 
-    icon: '🧁', 
-    color: 'bg-pink-400', 
-    tags: ['Candy Bar', 'Bodas', 'Bautizos', 'Comuniones', 'Cumpleaños', 'Corporativo', 'Personalizado', 'Tartas Fondant'] 
-  },
-  { 
     id: 'pasteleria', 
     label: 'Pastelería', 
     description: 'Alta repostería tradicional y moderna.', 
     icon: '🍰', 
     color: 'bg-yellow-400', 
-    tags: ['Artesanal', 'Gourmet', 'Fresco', 'Pastelería Fina', 'Tradición', 'Novedad', 'Mousse', 'Hojaldre'] 
-  },
-  { 
-    id: 'reposteria_creativa',
-    label: 'Repostería Creativa',
-    description: 'Tartas de diseño, modelado en azúcar y arte comestible.',
-    icon: '🎂',
-    color: 'bg-indigo-400',
-    tags: ['Fondant', 'Diseño 3D', 'Tartas Escultura', 'Cookies Decoradas', 'Cake Pops']
+    tags: [
+        // Tipos
+        'Pastelería Artesanal', 'Pastelería Creativa', 'Pastelería Moderna', 'Pastelería Tradicional', 
+        'Pastelería Gourmet', 'Pastelería Fina', 'Pastelería de Autor', 'Pastelería Personalizada',
+        'Pastelería Infantil', 'Pastelería Temática', 'Pastelería Sin Azúcar', 'Pastelería Vegana', 
+        'Pastelería Sin Gluten', 'Pastelería Saludable', 'Pastelería Ecológica',
+        // Productos
+        'Tartas', 'Tartas Personalizadas', 'Tartas Fondant', 'Drip Cake', 'Naked Cake', 
+        'Tartas de Boda', 'Tartas de Comunión', 'Tartas de Cumpleaños', 'Tartas Corporativas',
+        'Cupcakes', 'Cake Pops', 'Brownies', 'Cheesecake', 'Bizcochos', 'Postres Individuales',
+        // Servicios & Extras
+        'A Domicilio', 'Recogida en Tienda', 'Online', 'Urgente 24h', 'Marca Premium', 'Top Ventas'
+    ] 
   },
   { 
     id: 'confiterias', 
@@ -57,7 +53,17 @@ export const SECTORS: SectorInfo[] = [
     description: 'Bombones y dulces artesanales de autor.', 
     icon: '🥐', 
     color: 'bg-purple-400', 
-    tags: ['Chocolate', 'Tradición', 'Bombones', 'Pralinés', 'Trufas', 'Caramelos'] 
+    tags: [
+        // Tipos
+        'Confitería Artesanal', 'Confitería Tradicional', 'Confitería Gourmet', 'Confitería Premium', 
+        'Confitería Familiar', 'Confitería de Autor', 'Confitería Creativa',
+        // Productos
+        'Bombones', 'Bombones Artesanos', 'Chocolatería', 'Chocolate Belga', 'Chocolate Premium',
+        'Turrones', 'Mazapanes', 'Dulces Tradicionales', 'Dulces Regionales', 'Dulces Navideños',
+        'Caramelos Artesanos', 'Trufas', 'Pralinés',
+        // Servicios & Extras
+        'Regalos Dulces', 'Pack Premium', 'Producto Exclusivo', 'Envíos Nacionales', 'Marca Sostenible'
+    ] 
   },
   { 
     id: 'churrerias_creperias', 
@@ -65,15 +71,32 @@ export const SECTORS: SectorInfo[] = [
     description: 'El sabor de la tradición y el capricho.', 
     icon: '🥨', 
     color: 'bg-orange-400', 
-    tags: ['Churros', 'Chocolate', 'Porras', 'Crepes Dulces', 'Crepes Salados', 'Desayunos'] 
+    tags: [
+        // Tipos
+        'Churrería Tradicional', 'Churrería Artesanal', 'Churrería Móvil', 'Churrería Nocturna', 'Churrería Local',
+        // Productos
+        'Churros', 'Porras', 'Churros Artesanos', 'Churros Rellenos', 'Chocolate Caliente', 
+        'Desayunos', 'Meriendas', 'Packs Desayuno', 'Crepes Dulces', 'Crepes Salados',
+        // Servicios
+        'Servicio a Domicilio', 'Recogida en Tienda', 'Eventos Privados', 'Mejor Valorado'
+    ] 
   },
   { 
-    id: 'heladerias', 
-    label: 'Heladerías', 
-    description: 'Frescura artesanal en cada bola.', 
-    icon: '🍦', 
-    color: 'bg-cyan-400', 
-    tags: ['Helado', 'Natural', 'Fruta Real', 'Sin Conservantes', 'Sorbetes', 'Cremosos'] 
+    id: 'mesas_dulces', 
+    label: 'Mesas Dulces', 
+    description: 'Diseño exclusivo de candy bars y repostería para eventos.', 
+    icon: '🧁', 
+    color: 'bg-pink-400', 
+    tags: [
+        // Conceptos
+        'Candy Bar', 'Sweet Table', 'Sweet Corner', 'Mesas Dulces Temáticas', 'Mesas Dulces Premium',
+        'Mesas Dulces Económicas', 'Mesas Dulces Infantiles', 'Mesas Corporativas',
+        // Eventos
+        'Bodas', 'Comuniones', 'Bautizos', 'Cumpleaños', 'Baby Shower', 'Gender Reveal', 'Fiestas Temáticas',
+        // Servicios
+        'Montaje Incluido', 'Decoración de Eventos', 'Alquiler Mobiliario', 'Personalización Total',
+        'Pack Básico', 'Pack Premium', 'Tendencia'
+    ] 
   },
   { 
     id: 'tiendas_chucherias', 
@@ -81,7 +104,45 @@ export const SECTORS: SectorInfo[] = [
     description: 'Un paraíso de colores y sabores.', 
     icon: '🍭', 
     color: 'bg-red-400', 
-    tags: ['Gominolas', 'Color', 'Regalos Dulces', 'Tallas Personalizadas', 'Fiestas', 'Piñatas'] 
+    tags: [
+        // Tipos
+        'Tienda de Chuches', 'Tienda de Golosinas', 'Tienda de Caramelos', 'Tienda Online', 'Tienda Local',
+        // Productos
+        'Gominolas', 'Chuches a Granel', 'Chuches Sin Azúcar', 'Chuches Veganas', 
+        'Tartas de Chuches', 'Brochetas de Chuches', 'Cestas de Chuches', 'Regalos Dulces',
+        // Servicios
+        'Packs de Chuches', 'Fiestas Escolares', 'Piñatas', 'Envíos Locales', 'Novedad'
+    ] 
+  },
+  { 
+    id: 'reposteria_creativa',
+    label: 'Repostería Creativa',
+    description: 'Tartas de diseño, modelado en azúcar y arte comestible.',
+    icon: '🎂',
+    color: 'bg-indigo-400',
+    tags: [
+        // Tipos
+        'Repostería Artística', 'Repostería Personalizada', 'Repostería Moderna', 'Repostería Temática',
+        // Especializaciones
+        'Fondant', 'Modelado en Azúcar', 'Buttercream', 'Decoración Comestible', 
+        'Impresión Comestible', 'Lettering en Dulces', 'Diseño 3D', 'Cookies Decoradas',
+        // Eventos
+        'Eventos Infantiles', 'Eventos Corporativos', 'Bodas', 'Aniversarios',
+        // Extras
+        'Personalización Total', 'Producto de Autor', 'Alta Demanda', 'Urgente 24h'
+    ]
+  },
+  { 
+    id: 'heladerias', 
+    label: 'Heladerías', 
+    description: 'Frescura artesanal en cada bola.', 
+    icon: '🍦', 
+    color: 'bg-cyan-400', 
+    tags: [
+        'Helado Artesanal', 'Helado Natural', 'Sin Conservantes', 'Sorbetes', 'Cremosos',
+        'Helado Vegano', 'Sin Azúcar', 'Sin Gluten', 'Tarrinas', 'Cucuruchos',
+        'Batidos', 'Horchata', 'Granizados', 'Para Llevar', 'Negocio Local'
+    ] 
   }
 ];
 
@@ -166,7 +227,7 @@ export const MOCK_BUSINESSES: Business[] = [
     id: '1', name: 'La Dulcería de Ana', sectorId: 'pasteleria', packId: 'super_top', nif: 'B12345678', phone: '912345678', cp: '28001', address: 'Calle Mayor 10', city: 'Madrid', province: 'Madrid', lat: 40.4168, lng: -3.7038, status: 'active', createdAt: '2024-01-15',
     mainImage: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&q=80&w=800',
     images: ['https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&q=80&w=800', 'https://images.unsplash.com/photo-1626803775151-61d756612f97?auto=format&fit=crop&q=80&w=800'],
-    tags: ['Sin Gluten', 'Vegano', 'Bodas'],
+    tags: ['Pastelería Artesanal', 'Sin Gluten', 'Vegano', 'Bodas', 'A Domicilio'],
     description: 'La Dulcería de Ana es el referente en pastelería sin gluten de Madrid. Elaboramos diariamente nuestros productos con ingredientes certificados.',
     ratings: [{id: 'r1', stars: 5, comment: 'Increíble tarta de queso', date: '2024-02-01'}],
     stats: { views: 1250, clicks: 85, ctr: 0.068, saturationIndex: 0.2 },
@@ -179,7 +240,7 @@ export const MOCK_BUSINESSES: Business[] = [
   {
     id: '2', name: 'Churros & Co', sectorId: 'churrerias_creperias', packId: 'basic', nif: 'B87654321', phone: '934567890', cp: '08001', address: 'La Rambla 50', city: 'Barcelona', province: 'Barcelona', lat: 41.3851, lng: 2.1734, status: 'active', createdAt: '2024-02-20',
     mainImage: 'https://images.unsplash.com/photo-1614739665304-453724c9657c?auto=format&fit=crop&q=80&w=800',
-    tags: ['Tradicional'],
+    tags: ['Churrería Tradicional', 'Chocolate Caliente'],
     description: 'Churros tradicionales hechos al momento. Chocolate espeso y crujiente.',
     ratings: [],
     stats: { views: 400, clicks: 12, ctr: 0.03, saturationIndex: 0.8 },
@@ -190,7 +251,7 @@ export const MOCK_BUSINESSES: Business[] = [
   {
     id: '3', name: 'Sweet Dreams', sectorId: 'mesas_dulces', packId: 'premium', nif: 'B11223344', phone: '963258741', cp: '46001', address: 'Plaza Reina 5', city: 'Valencia', province: 'Valencia', lat: 39.4744, lng: -0.3753, status: 'active', createdAt: '2024-03-05',
     mainImage: 'https://images.unsplash.com/photo-1535141192574-5d4897c12636?auto=format&fit=crop&q=80&w=800',
-    tags: ['Bodas', 'Eventos'],
+    tags: ['Bodas', 'Eventos', 'Mesas Dulces Premium'],
     description: 'Creamos mesas dulces de ensueño para tu boda o evento.',
     ratings: [{id: 'r2', stars: 4, comment: 'Muy bonito todo', date: '2024-03-10'}],
     stats: { views: 890, clicks: 45, ctr: 0.05, saturationIndex: 0.4 },
